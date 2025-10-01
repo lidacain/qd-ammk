@@ -1,0 +1,376 @@
+{% extends "users/base.html" %}
+
+{% block title %}Фиксация дефектов{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Фиксация дефекта. Пост: {{ post.name }}</h2>
+
+    {% if messages %}
+        <div class="alert alert-success">
+            {% for message in messages %}
+                {{ message }}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <p><strong>Пост:</strong> {{ post.name }}</p>
+
+        <!-- 📌 Номер контейнера -->
+        <div class="row mb-3">
+            <div class="mb-3">
+                <label class="form-label">Номер контейнера</label>
+                {{ form.container_number }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Фото номера контейнера</label>
+                <input type="file" name="container_image" id="container_image" class="form-control">
+                <button type="button" class="btn btn-primary mt-2" onclick="openCamera('container_image')">📷 Сделать фото</button>
+                <img id="container_image_preview" src="" class="img-fluid mt-2" style="display:none;">
+            </div>
+
+        </div>
+
+        <!-- 📌 Номер пломбы -->
+        <div class="row mb-3">
+            <div class="mb-3">
+                <label class="form-label">Номер палета</label>
+                {{ form.pallet_number }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Фото номера палета</label>
+                <input type="file" name="pallet_image" id="pallet_image" class="form-control">
+                <button type="button" class="btn btn-primary mt-2" onclick="openCamera('pallet_image')">📷 Сделать фото</button>
+                <img id="pallet_image_preview" src="" class="img-fluid mt-2" style="display:none;">
+            </div>
+        </div>
+
+        <!-- 📌 Выбор детали -->
+        <div class="mb-3">
+            <label class="form-label">Выберите деталь</label>
+            <select name="detail" id="detail_select" class="form-control">
+                <option value="">-- Выберите деталь --</option>
+                {% for detail in details %}
+                    <option value="{{ detail.id }}">{{ detail.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- 📌 Выбор дефекта (убрана фильтрация по деталям) -->
+        <div class="mb-3">
+            <label class="form-label">Выберите дефект</label>
+            <select name="defect" id="defect_select" class="form-control">
+                <option value="">-- Выберите дефект --</option>
+                {% for defect in defects %}
+                    <option value="{{ defect.id }}">{{ defect.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Описание дефекта</label>
+            {{ form.defect_description }}
+        </div>
+
+
+        <!-- 📌 Фото дефекта (множественный выбор) -->
+        <div class="mb-3">
+            <label class="form-label">Фото дефекта</label>
+            <input type="file" name="defect_images" id="defect_images" class="form-control" multiple>
+            <button type="button" class="btn btn-primary mt-2" onclick="openCamera('defect_images')">📷 Сделать фото</button>
+            <div id="defect_images_preview" class="d-flex flex-wrap mt-2"></div>
+        </div>
+
+        <!-- 📌 Галерея загруженных фото дефектов -->
+        <div class="row mt-3" id="defect_images_gallery"></div>
+
+        <button type="submit" class="btn btn-danger w-100">📌 Зафиксировать дефект</button>
+    </form>
+</div>
+
+<!-- ✅ Модальное окно камеры -->
+<div id="camera_modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; flex-direction:column;">
+    <video id="camera_feed" style="width: 90%; max-width: 500px; object-fit: contain;"></video>
+    <button id="capture_button" class="btn btn-success mt-3">📸 Сделать фото</button>
+    <button id="close_camera" class="btn btn-danger mt-2">❌ Закрыть</button>
+</div>
+
+<canvas id="camera_canvas" style="display:none;"></canvas>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    console.log("🚀 JavaScript загружен!");
+
+    // ✅ Функция для настройки поиска и выбора деталей и дефектов
+    function setupBootstrapDropdown(selectElement) {
+        if (!selectElement) return;
+
+        let container = document.createElement("div");
+        container.classList.add("dropdown");
+
+        let input = document.createElement("input");
+        input.setAttribute("type", "text");
+        input.setAttribute("class", "form-control dropdown-toggle");
+        input.setAttribute("placeholder", "🔍 Поиск...");
+        input.setAttribute("data-bs-toggle", "dropdown");
+
+        let dropdownMenu = document.createElement("ul");
+        dropdownMenu.classList.add("dropdown-menu", "w-100");
+        dropdownMenu.style.maxHeight = "200px";
+        dropdownMenu.style.overflowY = "auto";
+
+        container.appendChild(input);
+        container.appendChild(dropdownMenu);
+        selectElement.parentNode.insertBefore(container, selectElement);
+        selectElement.style.display = "none"; // Скрываем оригинальный select
+
+        function updateDropdown() {
+            let query = input.value.toLowerCase();
+            dropdownMenu.innerHTML = "";
+            let matchCount = 0;
+
+            Array.from(selectElement.options).forEach(option => {
+                if (option.value && option.text.toLowerCase().includes(query)) {
+                    let item = document.createElement("li");
+                    let link = document.createElement("a");
+                    link.setAttribute("href", "#");
+                    link.classList.add("dropdown-item");
+                    link.textContent = option.text;
+                    link.onclick = function(event) {
+                        event.preventDefault();
+                        input.value = option.text;
+                        selectElement.value = option.value;
+                        dropdownMenu.classList.remove("show");
+                    };
+                    item.appendChild(link);
+                    dropdownMenu.appendChild(item);
+                    matchCount++;
+                }
+            });
+
+            if (matchCount > 0) {
+                dropdownMenu.classList.add("show");
+            } else {
+                dropdownMenu.classList.remove("show");
+            }
+        }
+
+        input.addEventListener("input", updateDropdown);
+        input.addEventListener("focus", updateDropdown);
+        document.addEventListener("click", function(event) {
+            if (!container.contains(event.target)) {
+                dropdownMenu.classList.remove("show");
+            }
+        });
+    }
+
+    // ✅ Включаем поиск для деталей и дефектов
+    setupBootstrapDropdown(document.getElementById("detail_select"));
+    setupBootstrapDropdown(document.getElementById("defect_select"));
+
+    // ✅ Камера
+    let modal = document.getElementById("camera_modal");
+    let video = document.getElementById("camera_feed");
+    let closeButton = document.getElementById("close_camera");
+    let captureButton = document.getElementById("capture_button");
+    let canvas = document.createElement("canvas");
+
+    let activeInput = null;
+    let activePreview = null;
+    let activeStream = null;
+
+    let defectImagesInput = document.getElementById("defect_images");
+    let galleryContainer = document.getElementById("defect_images_gallery");
+
+    console.log("📸 Камера готова!");
+
+    window.openCamera = function(inputId) {
+        console.log(`📷 Открытие камеры для ${inputId}`);
+
+        activeInput = document.getElementById(inputId);
+        activePreview = document.getElementById(`${inputId}_preview`);
+
+        if (!activeInput) {
+            console.error(`❌ Ошибка: Не найден элемент input #${inputId}`);
+            return;
+        }
+
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(function(stream) {
+            activeStream = stream;
+            video.srcObject = stream;
+            video.play();
+            modal.style.display = "flex";
+            console.log("✅ Камера успешно открыта!");
+        })
+        .catch(function(error) {
+            alert("Ошибка доступа к камере");
+            console.error("❌ Ошибка камеры:", error);
+        });
+    };
+
+    function closeCamera() {
+        console.log("❌ Закрытие камеры...");
+
+        if (activeStream) {
+            activeStream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+            activeStream = null;
+        }
+
+        modal.style.display = "none";
+    }
+
+    captureButton.addEventListener("click", function() {
+        console.log("📸 Захват изображения...");
+        let context = canvas.getContext("2d");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        let timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        let fileName = `photo_${timestamp}.jpg`;
+
+        canvas.toBlob(function(blob) {
+            let file = new File([blob], fileName, { type: "image/jpeg" });
+
+            if (activeInput.id === "defect_images") {
+                addFileToDefectImages(file);
+            } else {
+                let dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                activeInput.files = dataTransfer.files;
+
+                if (activePreview) {
+                    let reader = new FileReader();
+                    reader.onload = function(e) {
+                        activePreview.src = e.target.result;
+                        activePreview.style.display = "block";
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            console.log("✅ Фото успешно сохранено в input:", fileName);
+        }, "image/jpeg");
+
+        closeCamera();
+    });
+
+    closeButton.addEventListener("click", closeCamera);
+
+    modal.addEventListener("click", function(event) {
+        if (event.target === modal) {
+            closeCamera();
+        }
+    });
+
+    // ✅ Функция для добавления нескольких изображений дефектов
+    function addFileToDefectImages(file) {
+        let dataTransfer = new DataTransfer();
+
+        let existingFiles = defectImagesInput.files;
+        for (let i = 0; i < existingFiles.length; i++) {
+            dataTransfer.items.add(existingFiles[i]);
+        }
+
+        dataTransfer.items.add(file);
+        defectImagesInput.files = dataTransfer.files;
+
+        updateDefectGallery();
+    }
+
+    // ✅ Обновление галереи дефектов
+    function updateDefectGallery() {
+        galleryContainer.innerHTML = "";
+        let files = defectImagesInput.files;
+
+        for (let i = 0; i < files.length; i++) {
+            let file = files[i];
+            let reader = new FileReader();
+
+            reader.onload = function(e) {
+                let colDiv = document.createElement("div");
+                colDiv.classList.add("col-md-3", "mb-3");
+
+                let img = document.createElement("img");
+                img.src = e.target.result;
+                img.classList.add("img-fluid", "rounded", "shadow-sm");
+
+                let deleteBtn = document.createElement("button");
+                deleteBtn.classList.add("btn", "btn-danger", "btn-sm", "mt-1");
+                deleteBtn.textContent = "Удалить";
+                deleteBtn.onclick = function() {
+                    removeDefectFile(i);
+                };
+
+                colDiv.appendChild(img);
+                colDiv.appendChild(deleteBtn);
+                galleryContainer.appendChild(colDiv);
+            };
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function removeDefectFile(index) {
+        let dt = new DataTransfer();
+        let files = defectImagesInput.files;
+
+        for (let i = 0; i < files.length; i++) {
+            if (i !== index) {
+                dt.items.add(files[i]);
+            }
+        }
+
+        defectImagesInput.files = dt.files;
+        updateDefectGallery();
+    }
+
+    defectImagesInput.addEventListener("change", updateDefectGallery);
+});
+
+
+document.addEventListener("DOMContentLoaded", function() {
+    console.log("🚀 JavaScript загружен!");
+
+    let modal = document.getElementById("camera_modal");
+    let video = document.getElementById("camera_feed");
+    let closeButton = document.getElementById("close_camera");
+    let captureButton = document.getElementById("capture_button");
+
+    let activeStream = null;
+
+    console.log("📸 Камера готова!");
+
+    // ✅ Функция для закрытия камеры
+    function closeCamera() {
+        console.log("❌ Закрытие камеры...");
+        if (activeStream) {
+            activeStream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+            activeStream = null;
+        }
+        modal.style.display = "none";
+    }
+
+    // ✅ Автоматически закрываем камеру при загрузке страницы
+    window.addEventListener("load", function() {
+        console.log("🔄 Авто-закрытие камеры при загрузке страницы");
+        closeCamera();
+    });
+
+    closeButton.addEventListener("click", closeCamera);
+
+    modal.addEventListener("click", function(event) {
+        if (event.target === modal) {
+            closeCamera();
+        }
+    });
+
+});
+</script>
+{% endblock %}

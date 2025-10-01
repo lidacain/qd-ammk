@@ -1,0 +1,216 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% load custom_filters %}
+{% block title %}Пост первичного осмотра кузовов{% endblock %}
+
+{% block content %}
+<style>
+    .table-header-fixed {
+        position: fixed;
+        top: 56px;
+        left: 0;
+        right: 0;
+        background-color: white;
+        border-bottom: 1px solid #dee2e6;
+        z-index: 1000;
+        padding: 12px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .table-container-scroll {
+        position: fixed;
+        top: 110px; /* ниже .table-header-fixed */
+        left: 0;
+        right: 0;
+        bottom: 0;
+        overflow: auto;
+        padding: 20px;
+        background-color: white;
+    }
+
+    table {
+        width: 100%;
+        min-width: 1400px;
+        border-collapse: collapse;
+    }
+
+    thead th {
+        position: sticky;
+        top: 0;
+        background-color: #212529;
+        color: white;
+        z-index: 10;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    .table td {
+        vertical-align: top;
+        word-break: break-word;
+        max-width: 300px;
+    }
+
+    .controller-info small {
+        display: block;
+        color: #6c757d;
+    }
+
+    .vin-link {
+        color: #495057;
+        font-weight: 600;
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+
+    .vin-link:hover {
+        color: #6c757d;
+        text-decoration: underline;
+        cursor: pointer;
+    }
+</style>
+
+<div class="table-header-fixed">
+    <a href="{% url 'incoming_workshop_dashboard' %}" class="btn btn-outline-secondary">Назад</a>
+    <h3 class="m-0 text-center w-100">Таблица осмотров — Зона первичного осмотра кузовов</h3>
+</div>
+
+<div class="table-container-scroll">
+    <table class="table table-bordered table-hover table-striped align-middle">
+        <thead>
+            <tr>
+                <th>№</th>
+                <th>VIN</th>
+                <th>№ контейнера</th>
+                <th>Дата</th>
+                <th>Время осмотра</th>
+                <th>Контролер</th>
+                <th>Деталь</th>
+                <th>Комментарий (деталь)</th>
+                <th>Дефект</th>
+                <th>Комментарий (дефект)</th>
+                <th>Кол-во</th>
+                <th>Степень</th>
+                <th>Тип ремонта</th>
+                <th>Ответственный</th>
+                <th>Фото дефекта</th>
+                <th>Фото кузова</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in records %}
+            <tr class="{% if row.has_defect %}table-danger{% else %}table-success{% endif %}">
+                <td class="text-center">{{ forloop.counter }}</td>
+
+                {# VIN + бренд/модель #}
+                {% with trace=vin_trace_map|get_item:row.vin %}
+                <td data-model="{{ trace.model|default_if_none:'' }}">
+                    <div style="white-space: nowrap;">
+                        <a href="{% url 'vin_tracking_view' vin=row.vin %}" class="vin-link" target="_blank" rel="noopener noreferrer">
+                            {{ row.vin }}
+                        </a>
+                    </div>
+                    <div style="font-size: 0.9em; color: #6c757d;">
+                        {{ trace.brand|default:"" }}<br>
+                        {{ trace.model|default:"" }}<br>
+                        {{ trace.config_code|default:"" }}
+                    </div>
+                </td>
+                {% endwith %}
+
+                {# № контейнера #}
+                <td class="text-center">{{ row.container_number|default:"" }}</td>
+
+                {# Дата #}
+                <td class="text-center">{{ row.date|date:"d.m.Y H:i" }}</td>
+
+                {# Время осмотра (сек → формат) #}
+                <td class="text-center">
+                    {% if row.inspection_time %}{{ row.inspection_time|duration_fmt }}{% else %}-{% endif %}
+                </td>
+
+                {# Контроллер #}
+                <td class="controller-info">
+                    {{ row.controller|default:"" }}
+                    {% with controller_users|dict_get:row.controller as user %}
+                        {% if user %}
+                            <small>{{ user.last_name }} {{ user.first_name }}</small>
+                        {% endif %}
+                    {% endwith %}
+                </td>
+
+                <td>{{ row.detail|default:"" }}</td>
+                <td>{{ row.comment|default:"" }}</td>
+                <td>{{ row.defect|default:"" }}</td>
+                <td>{{ row.extra_comment|default:"" }}</td>
+                <td class="text-center">{{ row.quantity|default:"" }}</td>
+                <td class="text-center">{{ row.grade|default:"" }}</td>
+                <td>{{ row.repair_type|default:"" }}</td>
+                <td>{{ row.responsible|default:"" }}</td>
+
+                {# Фото дефекта #}
+                <td>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+                        {% for img in row.photos %}
+                            <a href="{% url 'view_image' image_path=img|cut:'/media/' %}?index={{ forloop.counter0 }}&group={{ row.group_key }}_def&photos={{ row.photos_json|default:'[]'|urlencode }}">
+                                <img src="{{ img }}" style="width: 50px; height: 80px; object-fit: cover; border-radius: 4px;">
+                            </a>
+                        {% endfor %}
+                    </div>
+                </td>
+
+                {# Фото кузова #}
+                <td>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+                        {% for img in row.body_photos %}
+                            <a href="{% url 'view_image' image_path=img|cut:'/media/' %}?index={{ forloop.counter0 }}&group={{ row.group_key }}_body&photos={{ row.body_photos_json|default:'[]'|urlencode }}">
+                                <img src="{{ img }}" style="width: 50px; height: 80px; object-fit: cover; border-radius: 4px;">
+                            </a>
+                        {% endfor %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Модальное окно для фото (если используешь локально) -->
+<div id="image-modal" class="modal" style="display: none;">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <img id="modal-img" class="modal-content">
+    <button id="prev-btn" class="nav-btn left" onclick="showPrev()">&#10094;</button>
+    <button id="next-btn" class="nav-btn right" onclick="showNext()">&#10095;</button>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const modelFilter = document.getElementById("filter-model");
+    const defectFilter = document.getElementById("filter-defect");
+    const rows = Array.from(document.querySelectorAll("tbody tr"));
+
+    function applyFilters() {
+        const selectedModel = (modelFilter?.value || "").toLowerCase();
+        const selectedDefect = (defectFilter?.value || "").toLowerCase();
+
+        rows.forEach(row => {
+            const vinCell = row.querySelector("td:nth-child(2)");  // VIN колонка
+            const modelText = (vinCell?.dataset.model || "").toLowerCase();
+
+            // ⚠️ Колонка дефекта теперь #9 (из-за новых столбцов)
+            const defectCell = row.querySelector("td:nth-child(9)");
+            const defectText = (defectCell?.innerText || "").toLowerCase();
+
+            const matchModel = !selectedModel || modelText.includes(selectedModel);
+            const matchDefect = !selectedDefect || defectText.includes(selectedDefect);
+
+            row.style.display = (matchModel && matchDefect) ? "" : "none";
+        });
+    }
+
+    if (modelFilter) modelFilter.addEventListener("change", applyFilters);
+    if (defectFilter) defectFilter.addEventListener("change", applyFilters);
+});
+</script>
+{% endblock %}

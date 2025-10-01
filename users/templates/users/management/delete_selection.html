@@ -1,0 +1,32 @@
+{% extends "users/base.html" %}
+
+{% block title %}Удаление выбора{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center text-danger mb-4">🗑️ Подтвердите удаление</h2>
+
+    <div class="card mx-auto" style="max-width: 600px;">
+        <div class="card-body">
+            <p>Вы действительно хотите удалить выбор сотрудника <strong>{{ selection.employee.name }}</strong>?</p>
+            <ul class="mb-3">
+                <li><strong>Дата:</strong> {{ selection.selected_date|date:"d.m.Y" }}</li>
+                <li><strong>ХТК:</strong> {% if selection.is_xtk %}Да{% else %}Нет{% endif %}</li>
+                <li><strong>Часы:</strong> {{ selection.hours }}</li>
+            </ul>
+
+            <div class="alert alert-warning">
+                Это действие <strong>необратимо</strong>. Запись будет удалена из списка.
+            </div>
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex justify-content-between mt-4">
+                    <a href="{% url 'employee_search' %}" class="btn btn-secondary">⬅️ Отмена</a>
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block title %}Пост основной приёмки{% endblock %}
+
+{% block content %}
+<style>
+    #inspection-table thead th {
+        vertical-align: middle;
+        text-align: center;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        font-size: 14px;
+    }
+
+    .fullscreen-table {
+        position: fixed !important;
+        top: 70px !important;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9999;
+        background: #fff;
+        padding: 20px;
+        overflow: auto;
+        width: 100vw !important;
+        height: calc(100vh - 60px) !important;
+    }
+</style>
+
+<div class="container py-4">
+    <a href="{% url 'incoming_workshop_dashboard' %}" class="btn btn-outline-secondary mb-4">← Назад</a>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0 text-center flex-grow-1">Таблица осмотров — Зона основной приёмки</h3>
+        <button class="btn btn-sm btn-primary ms-3" onclick="toggleFullScreen()">🔍 Развернуть</button>
+    </div>
+
+    <div id="table-container" class="">
+        <table id="inspection-table" class="table table-bordered table-hover table-striped align-middle w-100" style="min-width: 1200px;">
+            <thead class="table-dark text-center">
+                <tr>
+                    <th>№</th>
+                    <th>VIN</th>
+                    <th>Дата</th>
+                    <th>Время осмотра</th>
+                    <th>Контроллер</th>
+                    <th>Деталь</th>
+                    <th>Комментарий (деталь)</th>
+                    <th>Дефект</th>
+                    <th>Комментарий (дефект)</th>
+                    <th>Кол-во</th>
+                    <th>Степень</th>
+                    <th>Тип ремонта</th>
+                    <th>Ответственный</th>
+                    <th>Фото дефекта</th>
+                    <th>Фото кузова</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in records %}
+                <tr class="{% if row.has_defect %}table-danger{% else %}table-success{% endif %}">
+                    <td class="text-center">{{ forloop.counter }}</td>
+                    <td>{{ row.vin }}</td>
+                    <td>{{ row.date|date:"d.m.Y H:i" }}</td>
+                    <td class="text-center">
+                        {{ row.inspection_time|duration_fmt }}
+                    </td>
+                    <td>{{ row.controller }}</td>
+                    <td>{{ row.detail }}</td>
+                    <td>{{ row.comment }}</td>
+                    <td>{{ row.defect }}</td>
+                    <td>{{ row.extra_comment }}</td>
+                    <td>{{ row.quantity }}</td>
+                    <td>{{ row.grade }}</td>
+                    <td>{{ row.repair_type }}</td>
+                    <td>{{ row.responsible }}</td>
+                    <td>
+                        <div style="display: grid; gap: 4px; grid-template-columns: repeat(3, 1fr);">
+                            {% for img in row.photos %}
+                                <img src="{{ img }}" class="clickable-img" width="60"
+                                     onclick="openModal([{% for i in row.photos %}'{{ i }}'{% if not forloop.last %}, {% endif %}{% endfor %}], {{ forloop.counter0 }})">
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: grid; gap: 4px; grid-template-columns: repeat(3, 1fr);">
+                            {% for img in row.body_photos %}
+                                <img src="{{ img }}" class="clickable-img" width="60"
+                                     onclick="openModal([{% for i in row.body_photos %}'{{ i }}'{% if not forloop.last %}, {% endif %}{% endfor %}], {{ forloop.counter0 }})">
+                            {% endfor %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 🖼 Модальное окно галереи -->
+<div id="image-modal" class="modal" style="display: none;">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <img id="modal-img" class="modal-content">
+    <button id="prev-btn" class="nav-btn left" onclick="showPrev()">&#10094;</button>
+    <button id="next-btn" class="nav-btn right" onclick="showNext()">&#10095;</button>
+</div>
+{% endblock %}

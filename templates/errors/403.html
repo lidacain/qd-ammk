@@ -1,0 +1,22 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}403 — Доступ запрещён{% endblock %}
+
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+  <div class="text-center">
+    <h1 class="display-3 text-danger">403</h1>
+    <h2 class="mb-3">У вас нет доступа</h2>
+    <p class="text-muted mb-4">
+      К сожалению, вы не обладаете правами для просмотра этой страницы.<br>
+      Если вы считаете, что это ошибка — обратитесь к администратору.<br>
+      Почта администратора:
+      <a href="mailto:a.talgatuly@astana-motors.kz">a.talgatuly@astana-motors.kz</a>
+    </p>
+    <a href="{% url 'master_dashboard' %}" class="btn btn-primary btn-lg">
+      <i class="bi bi-house-door-fill"></i> На главную
+    </a>
+  </div>
+</div>
+{% endblock %}

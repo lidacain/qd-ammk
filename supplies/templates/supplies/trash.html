@@ -1,0 +1,695 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% block title %}trash{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4">
+    <h2>Пост</h2>
+
+    {% if messages %}
+        <div class="alert alert-success">
+            {% for message in messages %}
+                {{ message }}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <!-- Номер контейнера -->
+        <div class="mb-3 position-relative">
+          <label class="form-label">Номер VIN <span style="color: red">*</span></label>
+
+          <div style="position: relative;">
+            <!-- name=vin_code — важно для вьюшки trash -->
+            <input
+              type="text"
+              id="vin_search"
+              name="vin_code"
+              class="form-control"
+              placeholder="Введите VIN..."
+              maxlength="17"
+              autocomplete="off"
+            >
+            <span
+              id="clear_vin_search"
+              style="position:absolute; right:10px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:18px; color:#dc3545"
+              title="Очистить"
+            >❌</span>
+          </div>
+
+          <!-- Кнопки/контейнеры сканера (скрипты подключим позже) -->
+          <button type="button" id="start_qr_scan" class="btn btn-primary mt-2">📷 Сканировать QR</button>
+          <div id="qr-reader" style="width:300px; display:none;"></div>
+
+
+          <!-- Список подсказок по VIN -->
+          <ul id="vin_list" class="list-group mt-2" style="display:none; position:absolute; width:100%; z-index:1000;"></ul>
+        </div>
+        <div id="vehicle_info" class="mb-3 p-3 border rounded" style="display: none;">
+            <h5>Информация о кузове:</h5>
+            <p><strong>VIN:</strong> <span id="vin_value"></span></p>
+            <p><strong>Номер двигателя:</strong> <span id="engine_number_value"></span></p>
+            <p><strong>Модель:</strong> <span id="model_value"></span></p>
+            <p><strong>Цвет кузова:</strong> <span id="body_color_value"></span></p>
+        </div>
+
+        <!-- Фото контейнера -->
+        <div class="mb-3 position-relative">
+            <label class="form-label">Фото <span style="color: red">*</span></label>
+
+            <!-- Скрытый input -->
+            <input type="file" name="container_photos" id="container_photos"
+                   class="form-control"
+                   multiple readonly
+                   style="opacity: 0; pointer-events: none; position: absolute; z-index: 2; height: 100%; width: 100%; top: 0; left: 0;">
+
+            <!-- Отображение состояния -->
+            <div id="container_photos_display" class="form-control bg-light fw-bold" style="z-index: 1;">
+                📷 Файлы не выбраны
+            </div>
+
+            <!-- Кнопка камеры -->
+            <button type="button" class="btn btn-primary mt-2"
+                    onclick="openCamera('container_photos', 'container_photos_preview')">
+                📷 Сделать фото
+            </button>
+
+            <!-- Превью -->
+            <div id="container_photos_preview" class="d-flex flex-wrap mt-2 gap-2"></div>
+        </div>
+
+        <!-- Описание -->
+        <div class="mb-3">
+            <label class="form-label">Описание </label>
+            <textarea name="description" rows="4" class="form-control" placeholder="Введите описание (если есть)"></textarea>
+        </div>
+
+        <!-- Скрытое поле таймера -->
+        <input type="hidden" name="inspection_duration_seconds" id="inspection_duration_seconds">
+
+        <!-- Кнопка отправки -->
+        <button type="submit" class="btn btn-success w-100">✅ Завершить и сохранить</button>
+    </form>
+</div>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        setupCamera(); // 📸 активация логики камеры
+    });
+
+function setupCamera() {
+    const isMobileDevice = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isMobileDevice()) {
+        // 📱 Мобильная версия: нативная камера
+        window.openCamera = function (inputId, previewId) {
+            window.continueCaptureLoop = true;
+            const input = document.getElementById(inputId);
+            const preview = document.getElementById(previewId);
+            if (!input || !preview) return;
+
+            input.setAttribute("accept", "image/*");
+            input.setAttribute("capture", "environment"); // открыть заднюю камеру
+
+            input.onchange = function () {
+                if (!input.files || input.files.length === 0) {
+                    window.continueCaptureLoop = false; // ❌ пользователь нажал "Отмена"
+                    return;
+                }
+                const dt = new DataTransfer();
+
+                const existingImages = preview.querySelectorAll("img[data-file]");
+                let promises = [];
+
+                // 🔁 1. Восстановим ранее добавленные изображения (из предпросмотра)
+                existingImages.forEach(img => {
+                    const base64 = img.src;
+                    const filename = img.getAttribute("data-file");
+
+                    const p = fetch(base64)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            const file = new File([blob], filename, { type: blob.type });
+                            dt.items.add(file);
+                        });
+
+                    promises.push(p);
+                });
+
+                // 📸 2. Новые фото с камеры
+                const newFiles = Array.from(input.files);
+
+                newFiles.forEach(async (file) => {
+                  // Сжимаем -> получаем JPEG Blob
+                  const compressedBlob = await compressImageToJpeg(file, 1600, 0.6);
+
+                  // Имя файла
+                  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+                  const filename = `photo_${timestamp}.jpg`;
+
+                  // Готовим File и превью
+                  const renamedFile = new File([compressedBlob], filename, { type: "image/jpeg" });
+                  const imageURL = URL.createObjectURL(renamedFile);
+
+                  // 🔁 Инициализация карусели (если нужно) — оставляем как у тебя
+                  if (!preview.dataset.carouselInitialized) {
+                    preview.dataset.carouselInitialized = "true";
+                    preview.carouselData = [];
+                    preview.currentIndex = 0;
+
+                    preview.innerHTML = `
+                      <div class="carousel-wrapper d-flex flex-column align-items-center">
+                        <div class="carousel-img-container position-relative" style="position: relative;">
+                          <img class="carousel-img img-thumbnail mb-2"
+                               style="max-width:300px; border-radius:5px; object-fit:cover; width: 100%; position: relative; z-index: 1;">
+                          <div class="carousel-left-zone"  style="position:absolute; top:0; bottom:0; left:0; width:50%; z-index:2;"></div>
+                          <div class="carousel-right-zone" style="position:absolute; top:0; bottom:0; right:0; width:50%; z-index:2;"></div>
+                        </div>
+                        <button type="button" class="carousel-delete btn btn-danger btn-sm mt-2 mb-1">Удалить</button>
+                        <div class="carousel-controls d-flex justify-content-between align-items-center mt-3 w-100" style="max-width:300px;">
+                          <button type="button" class="carousel-prev btn btn-secondary btn-lg px-4">←</button>
+                          <span class="carousel-counter fs-5">1 / 1</span>
+                          <button type="button" class="carousel-next btn btn-secondary btn-lg px-4">→</button>
+                        </div>
+                      </div>
+                    `;
+
+                    const imgElement = preview.querySelector(".carousel-img");
+                    const deleteBtn = preview.querySelector(".carousel-delete");
+                    const prevBtn = preview.querySelector(".carousel-prev");
+                    const nextBtn = preview.querySelector(".carousel-next");
+                    const counter = preview.querySelector(".carousel-counter");
+
+                    function updateCarousel() {
+                      const data = preview.carouselData;
+                      if (!data.length) {
+                        preview.innerHTML = "<p>Нет фото</p>";
+                        preview.dataset.carouselInitialized = "";
+                        preview.carouselData = null;
+                        return;
+                      }
+                      const current = data[preview.currentIndex];
+                      imgElement.src = current.url;
+                      counter.textContent = `${preview.currentIndex + 1} / ${data.length}`;
+                    }
+
+                    deleteBtn.onclick = () => {
+                      preview.carouselData.splice(preview.currentIndex, 1);
+                      if (preview.currentIndex >= preview.carouselData.length) {
+                        preview.currentIndex = Math.max(0, preview.carouselData.length - 1);
+                      }
+                      updateCarousel();
+
+                      const dtInner = new DataTransfer();
+                      preview.carouselData.forEach(item => dtInner.items.add(item.file));
+                      input.files = dtInner.files;
+
+                      if (input.id === "container_photos") {
+                        const display = document.getElementById("container_photos_display");
+                        if (display) {
+                          const count = input.files.length;
+                          display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+                        }
+                      }
+                    };
+
+                    prevBtn.onclick = () => {
+                      if (preview.currentIndex > 0) {
+                        preview.currentIndex--;
+                        updateCarousel();
+                      }
+                    };
+                    nextBtn.onclick = () => {
+                      if (preview.currentIndex < preview.carouselData.length - 1) {
+                        preview.currentIndex++;
+                        updateCarousel();
+                      }
+                    };
+
+                    preview.updateCarousel = updateCarousel;
+                    preview.querySelector(".carousel-left-zone").addEventListener("click", () => {
+                      if (preview.currentIndex > 0) { preview.currentIndex--; preview.updateCarousel(); }
+                    });
+                    preview.querySelector(".carousel-right-zone").addEventListener("click", () => {
+                      if (preview.currentIndex < preview.carouselData.length - 1) { preview.currentIndex++; preview.updateCarousel(); }
+                    });
+                  }
+
+                  // ➕ Добавляем сжатое изображение
+                  preview.carouselData.push({ file: renamedFile, url: imageURL });
+                  preview.currentIndex = preview.carouselData.length - 1;
+                  preview.updateCarousel();
+
+                  // 🗂️ Обновляем input.files (только сжатые)
+                  const dtInner = new DataTransfer();
+                  preview.carouselData.forEach(item => dtInner.items.add(item.file));
+                  input.files = dtInner.files;
+
+                  if (input.id === "container_photos") {
+                    const display = document.getElementById("container_photos_display");
+                    if (display) {
+                      const count = input.files.length;
+                      display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+                    }
+                  }
+                });
+
+
+                // ⏳ Объединение после всех fetch
+                Promise.all(promises).then(() => {
+                    input.files = dt.files;
+                    // 🔄 Специальная обработка только для контейнера
+                    if (input.id === "container_photos") {
+                        const display = document.getElementById("container_photos_display");
+                        if (display) {
+                            const count = input.files.length;
+                            display.textContent = count > 0
+                                ? `📸 Загружено фото: ${count}`
+                                : "📷 Файлы не выбраны";
+                        }
+                    }
+                });
+            };
+
+            input.click();
+        };
+
+        // Вспомогательная функция для преобразования base64 в Blob
+        function dataURLToBlob(dataurl) {
+            const arr = dataurl.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], { type: mime });
+        };
+
+
+    } else {
+        // 💻 Десктопная версия: модальное окно
+        let modal = document.createElement("div");
+        modal.id = "camera_modal";
+        modal.style.display = "none";
+        modal.style.position = "fixed";
+        modal.style.top = "0";
+        modal.style.left = "0";
+        modal.style.width = "100%";
+        modal.style.height = "100%";
+        modal.style.background = "rgba(0,0,0,0.8)";
+        modal.style.justifyContent = "center";
+        modal.style.alignItems = "center";
+        modal.style.flexDirection = "column";
+        modal.innerHTML = `
+            <video id="camera_feed" autoplay playsinline style="width:90%; max-width:500px;"></video>
+            <button id="capture_button" class="btn btn-success mt-3">📸 Сделать фото</button>
+            <button id="close_camera" class="btn btn-danger mt-2">❌ Закрыть</button>
+        `;
+        document.body.appendChild(modal);
+
+        let video = document.getElementById("camera_feed");
+        let captureButton = document.getElementById("capture_button");
+        let closeButton = document.getElementById("close_camera");
+
+        let canvas = document.createElement("canvas");
+        let activeStream = null;
+        let activeInput = null;
+        let activePreview = null;
+
+        window.openCamera = function (inputId, previewId) {
+            activeInput = document.getElementById(inputId);
+            activePreview = document.getElementById(previewId);
+
+            if (!activeInput || !activePreview) {
+                console.error("❌ Ошибка: не найден input или preview");
+                return;
+            }
+
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+            }
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(function (stream) {
+                    activeStream = stream;
+                    video.srcObject = stream;
+                    modal.style.display = "flex";
+                    setTimeout(() => video.play(), 500);
+                })
+                .catch(function (error) {
+                    console.error("❌ Ошибка камеры:", error);
+                    alert(`Ошибка доступа к камере: ${error.message}`);
+                });
+
+            captureButton.onclick = function () {
+                if (!activeInput || !activePreview) return;
+
+                let context = canvas.getContext("2d");
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                canvas.toBlob(function (blob) {
+                    let file = new File([blob], `photo_${Date.now()}.jpg`, { type: "image/jpeg" });
+
+                    let dataTransfer = new DataTransfer();
+                    if (!activeInput.multiple) {
+                        activeInput.value = "";
+                        while (activePreview.firstChild) activePreview.removeChild(activePreview.firstChild);
+                    } else {
+                        for (let f of activeInput.files) {
+                            dataTransfer.items.add(f);
+                        }
+                    }
+
+                    dataTransfer.items.add(file);
+                    activeInput.files = dataTransfer.files;
+
+                    let imgContainer = document.createElement("div");
+                    imgContainer.classList.add("d-flex", "flex-column", "align-items-center", "m-2");
+
+                    let img = document.createElement("img");
+                    img.src = URL.createObjectURL(file);
+                    img.classList.add("img-thumbnail");
+                    img.style.maxWidth = "300px";
+                    img.style.borderRadius = "5px";
+                    img.style.objectFit = "cover";
+
+                    let deleteBtn = document.createElement("button");
+                    deleteBtn.classList.add("btn", "btn-danger", "btn-sm", "mt-2");
+                    deleteBtn.innerHTML = "Удалить";
+                    deleteBtn.onclick = function () {
+                        imgContainer.remove();
+                        removeFileFromInput(activeInput, file);
+                    };
+
+                    imgContainer.appendChild(img);
+                    imgContainer.appendChild(deleteBtn);
+                    activePreview.appendChild(imgContainer);
+
+                    closeCamera();
+                }, "image/jpeg");
+            };
+        };
+
+        function removeFileFromInput(inputElement, fileToRemove) {
+            let dataTransfer = new DataTransfer();
+            for (let i = 0; i < inputElement.files.length; i++) {
+                let file = inputElement.files[i];
+                if (file.name !== fileToRemove.name || file.size !== fileToRemove.size) {
+                    dataTransfer.items.add(file);
+                }
+            }
+            inputElement.files = dataTransfer.files;
+        }
+
+        function closeCamera() {
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+                activeStream = null;
+            }
+            video.srcObject = null;
+            modal.style.display = "none";
+        }
+
+        closeButton.addEventListener("click", closeCamera);
+        modal.addEventListener("click", function (event) {
+            if (event.target === modal) closeCamera();
+        });
+    }
+}
+
+
+function rebuildInputFiles(input, preview) {
+    const dt = new DataTransfer();
+
+    const images = preview.querySelectorAll("img[data-file]");
+    let promises = [];
+
+    images.forEach(img => {
+        const base64 = img.src;
+        const filename = img.getAttribute("data-file");
+
+        const p = fetch(base64)
+            .then(res => res.blob())
+            .then(blob => {
+                const file = new File([blob], filename, { type: blob.type });
+                dt.items.add(file);
+            });
+
+        promises.push(p);
+    });
+
+    Promise.all(promises).then(() => {
+        input.files = dt.files;
+        // 🔄 Специальная обработка только для кузова и дефекта
+        if (input.id === "body_photos") {
+            const display = document.getElementById("body_photos_display");
+            if (display) {
+                const count = input.files.length;
+                display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+            }
+        } else if (input.id.startsWith("defect_photo_input_")) {
+            const index = input.id.split("_").pop(); // получаем индекс из id
+            const display = document.getElementById(`defect_photo_display_${index}`);
+            if (display) {
+                const count = input.files.length;
+                display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+            }
+        }
+    });
+}
+
+</script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const qrReaderEl = document.getElementById("qr-reader");
+  const startBtn = document.getElementById("start_qr_scan");
+  const stopBtn  = document.getElementById("stop_qr_scan"); // можно не использовать
+  const vinInput = document.getElementById("vin_search");
+
+  const qrScanner = new Html5Qrcode("qr-reader");
+  let qrActive = false;
+
+  function onScanSuccess(decodedText) {
+    if (vinInput) vinInput.value = decodedText;
+    try { startInspectionTimer && startInspectionTimer(); } catch (_) {}
+    qrReaderEl.style.display = "none";
+
+    qrScanner.stop().finally(() => {
+      qrActive = false;
+      startBtn.innerText = "📷 Сканировать QR";
+      if (stopBtn) stopBtn.style.display = "none";
+    });
+
+    try { triggerVinSearch && triggerVinSearch(decodedText); } catch (_) {}
+  }
+
+  startBtn.addEventListener("click", () => {
+    if (!qrActive) {
+      qrReaderEl.style.display = "block";
+      startBtn.innerText = "✖ Остановить сканирование";
+      if (stopBtn) stopBtn.style.display = "inline-block";
+
+      qrScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        onScanSuccess
+      ).then(() => { qrActive = true; })
+       .catch(err => { console.error("Ошибка запуска камеры:", err); });
+    } else {
+      qrScanner.stop().finally(() => {
+        qrReaderEl.style.display = "none";
+        startBtn.innerText = "📷 Сканировать QR";
+        if (stopBtn) stopBtn.style.display = "none";
+        qrActive = false;
+      });
+    }
+  });
+
+  if (stopBtn) {
+    stopBtn.addEventListener("click", () => {
+      qrScanner.stop().finally(() => {
+        qrReaderEl.style.display = "none";
+        startBtn.innerText = "📷 Сканировать QR";
+        stopBtn.style.display = "none";
+        qrActive = false;
+      });
+    });
+  }
+
+  // На всякий — корректно освобождаем камеру при уходе со страницы
+  window.addEventListener("beforeunload", () => {
+    if (qrActive) { try { qrScanner.stop(); } catch(_){} }
+  });
+});
+</script>
+<script>
+(function(){
+  const vinInput  = document.getElementById("vin_search");
+  const vinList   = document.getElementById("vin_list");
+  const clearBtn  = document.getElementById("clear_vin_search");
+  const infoBox   = document.getElementById("vehicle_info");
+
+  if (!vinInput || !vinList) return;
+
+  // Простая задержка, чтобы не спамить API
+  let debounceTimer = null;
+  function debounce(fn, ms=200){
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(fn, ms);
+  }
+
+  vinInput.addEventListener("input", () => {
+    const q = vinInput.value.trim();
+    if (clearBtn) clearBtn.style.display = q ? "block" : "none";
+
+    if (!q) {
+      hideList();
+      if (infoBox) infoBox.style.display = "none";
+      return;
+    }
+
+    debounce(() => {
+      fetch(`/supplies/api/search_vin/?q=${encodeURIComponent(q)}`)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => {
+          const items = Array.isArray(data?.results) ? data.results : [];
+          renderList(items);
+        })
+        .catch(err => {
+          console.error("VIN search error:", err);
+          hideList();
+        });
+    }, 200);
+  });
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      vinInput.value = "";
+      hideList();
+      if (infoBox) infoBox.style.display = "none";
+      clearBtn.style.display = "none";
+      try { startInspectionTimer && startInspectionTimer(); } catch(_) {}
+      vinInput.focus();
+    });
+  }
+
+  // Клик вне — прячем список
+  document.addEventListener("click", (e) => {
+    if (!vinList.contains(e.target) && !vinInput.contains(e.target)) {
+      hideList();
+    }
+  });
+
+  function renderList(items){
+    vinList.innerHTML = "";
+    if (!items.length) return hideList();
+
+    items.forEach(item => {
+      const li = document.createElement("li");
+      li.className = "list-group-item list-group-item-action";
+      // Покажем VIN и модель, если есть
+      li.innerHTML = `<div class="d-flex justify-content-between">
+          <span>${item.vin || ""}</span>
+          <small class="text-muted">${(item.model || "").trim()}</small>
+        </div>`;
+
+      li.addEventListener("click", () => {
+        const vin = (item.vin || "").trim();
+        vinInput.value = vin;
+        showInfo(vin, item);
+        hideList();
+        try { startInspectionTimer && startInspectionTimer(); } catch(_) {}
+      });
+
+      vinList.appendChild(li);
+    });
+
+    // Показать список
+    vinList.style.display = "block";
+  }
+
+  function hideList(){
+    vinList.style.display = "none";
+    vinList.innerHTML = "";
+  }
+
+  function showInfo(vin, item){
+    // если у тебя есть блок с инфо — заполним сразу
+    const vinValue   = document.getElementById("vin_value");
+    const engValue   = document.getElementById("engine_number_value");
+    const modelValue = document.getElementById("model_value");
+    const colorValue = document.getElementById("body_color_value");
+
+    if (vinValue)   vinValue.textContent   = vin || "";
+    if (engValue)   engValue.textContent   = item?.engine_number || "";
+    if (modelValue) modelValue.textContent = item?.model || "";
+    if (colorValue) colorValue.textContent = item?.body_color || "";
+    if (infoBox)    infoBox.style.display  = "block";
+
+    // а это — твоя логика детального запроса (можно оставить)
+    try { triggerVinSearch && triggerVinSearch(vin); } catch(_) {}
+  }
+})();
+</script>
+<script>
+// === Клиентское сжатие изображений (JPEG, quality=0.6, maxWidth=1600) ===
+
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = e => resolve(e.target.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Возвращает Promise<Blob> (JPEG) сжатого изображения.
+ * @param {File|Blob} file
+ * @param {number} maxWidth
+ * @param {number} quality (0..1)
+ */
+async function compressImageToJpeg(file, maxWidth = 1600, quality = 0.6) {
+  try {
+    const dataUrl = await fileToDataURL(file);
+    const img = await loadImage(dataUrl);
+
+    const ratio = img.width > maxWidth ? maxWidth / img.width : 1;
+    const w = Math.round(img.width * ratio);
+    const h = Math.round(img.height * ratio);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, w, h);
+
+    return await new Promise(resolve =>
+      canvas.toBlob(b => resolve(b || file), "image/jpeg", quality)
+    );
+  } catch (e) {
+    console.warn("⚠️ Не удалось сжать изображение, отправляем оригинал:", e);
+    return file;
+  }
+}
+</script>
+
+
+{% endblock %}

@@ -1,0 +1,1584 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% load custom_filters %}
+{% block title %}{{ post }}{% endblock %}
+
+{% block content %}
+<style>
+    .table-header-fixed {
+        position: fixed;
+        top: 56px;
+        left: 0;
+        right: 0;
+        background-color: white;
+        border-bottom: 1px solid #dee2e6;
+        z-index: 1000;
+        padding: 12px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .table-container-scroll {
+        position: fixed;
+        top: 110px; /* ниже .table-header-fixed */
+        left: 0;
+        right: 0;
+        bottom: 0;
+        overflow: auto;
+        padding: 20px;
+        background-color: white;
+    }
+
+    table {
+        width: 100%;
+        min-width: 1400px;
+        border-collapse: collapse;
+    }
+
+    thead th {
+        position: sticky;
+        top: 0;
+        background-color: #212529;
+        color: white;
+        z-index: 10;
+        text-align: center;
+    }
+
+    .table td {
+        vertical-align: top;
+        word-break: break-word;
+        max-width: 300px;
+    }
+
+    .controller-info small {
+        display: block;
+        color: #6c757d;
+    }
+
+    .vin-link {
+        color: #495057; /* тёмно-серый (как текст Bootstrap) */
+        font-weight: 600;
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+
+    .vin-link:hover {
+        color: #6c757d; /* серый при наведении */
+        text-decoration: underline;
+        cursor: pointer;
+    }
+
+    .photo-chip{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:.6rem .9rem;border:1px solid #dee2e6;border-radius:12px;
+      background:#f8f9fa;color:#212529;text-decoration:none;font-weight:600;
+      min-width:110px;white-space:nowrap;
+    }
+    .photo-chip:hover{background:#eef2f6;text-decoration:none}
+
+    /* Кнопка-фильтр в заголовке */
+  .filter-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:28px;height:28px;border-radius:999px;
+    border:1px solid #6c757d;background:#fff;color:#212529;cursor:pointer;
+    transition:background-color .15s,border-color .15s,color .15s,box-shadow .15s;
+  }
+  .filter-btn i{pointer-events:none}
+  .filter-btn:hover{background:#f1f3f5}
+
+  /* Активная — полностью зелёная */
+  .filter-btn.active{
+    background:#198754;border-color:#198754;color:#fff;
+    box-shadow:0 0 0 2px rgba(25,135,84,.25);
+  }
+  .filter-btn.active i{color:#fff}
+  .filter-btn.active:focus-visible{
+    outline:0;box-shadow:0 0 0 3px rgba(25,135,84,.35);
+  }
+
+  /* Поповер одного экземпляра */
+  #filter-popover{
+    position:fixed;            /* важно: не absolute */
+    z-index:2000;              /* выше липкого thead (z-index:10) */
+    min-width:260px;max-width:340px;
+    background:#fff;border:1px solid #dee2e6;border-radius:.5rem;
+    box-shadow:0 .5rem 1rem rgba(0,0,0,.15);
+    display:none;              /* по умолчанию скрыт, JS покажет */
+  }
+  #filter-popover .fp-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:.5rem .75rem;border-bottom:1px solid #eee
+  }
+  #filter-popover .fp-body{max-height:300px;overflow:auto;padding:.5rem .75rem}
+  #filter-popover .fp-foot{display:flex;gap:.5rem;justify-content:flex-end;padding:.5rem .75rem;border-top:1px solid #eee}
+  #filter-popover .form-check{margin:.15rem 0}
+  #filter-popover .subttl{font-size:.85rem;color:#6c757d;margin:.25rem 0}
+
+  .page-btn{min-width:36px}
+  .page-btn.active{border-color:#0d6efd;color:#0d6efd;font-weight:600}
+  .page-nav[disabled]{opacity:.5;pointer-events:none}
+
+    /* Выпадающее меню экспорта и экран кастома */
+  .export-pop{
+    position:fixed; z-index:2001;
+    background:#fff;border:1px solid #dee2e6;border-radius:.5rem;
+    box-shadow:0 .5rem 1rem rgba(0,0,0,.15);
+    display:none; min-width:280px; max-width:420px;
+  }
+  .export-pop .head{
+    padding:.5rem .75rem;border-bottom:1px solid #eee;
+    display:flex;align-items:center;justify-content:space-between
+  }
+  .export-pop .body{padding:.5rem .75rem;max-height:420px;overflow:auto}
+  .export-pop .foot{padding:.5rem .75rem;border-top:1px solid #eee;display:flex;gap:.5rem;justify-content:flex-end}
+
+  .export-option{display:flex;gap:.6rem;align-items:center;
+    width:100%;text-align:left;padding:.5rem .6rem;border:1px solid #dee2e6;background:#fff;border-radius:.5rem}
+  .export-option:hover{background:#f8f9fa}
+
+  /* чеклиcт колонок */
+  .cols-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem .75rem}
+  .cols-grid .form-check{margin:.1rem 0}
+  .muted{color:#6c757d}
+
+  #custom-modal {position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; z-index:2500; }
+  #custom-modal .modal-dialog{margin:6rem auto;}
+  #custom-modal .modal-content{border-radius:.75rem;}
+</style>
+
+<div class="table-header-fixed">
+  <a href="{% url 'assembly_workshop_dashboard' %}" class="btn btn-outline-secondary">Назад</a>
+  <h3 class="m-0 text-center w-100">Таблица осмотров — {{ post }}</h3>
+
+  <!-- пагинация справа -->
+  <div id="pagination-bar" class="d-flex align-items-center gap-2 ms-auto" style="display:none;">
+    <div id="page-buttons" class="d-flex align-items-center gap-1">
+      <button class="page-nav btn btn-sm btn-outline-secondary" data-dir="-1" title="Лист назад">‹</button>
+      <div class="pages d-flex align-items-center gap-1"></div>
+      <button class="page-nav btn btn-sm btn-outline-secondary" data-dir="1" title="Лист вперёд">›</button>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <label for="page-size" class="small text-muted m-0">Показать по:</label>
+      <select id="page-size" class="form-select form-select-sm" style="width:auto;min-width:90px;">
+        <option value="100" selected>100</option>
+        <option value="200">200</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="table-container-scroll">
+
+    <!-- 🔍 ФИЛЬТРЫ -->
+    <div class="row mb-3 px-3 align-items-end">
+      <!-- поиск -->
+      <div class="col-md-3">
+        <label for="quick-search" class="form-label">Поиск по таблице:</label>
+        <input id="quick-search" type="search" class="form-control" placeholder="VIN, деталь, дефект, комментарий, контролер…" autocomplete="off">
+      </div>
+
+      <!-- дефекты -->
+      <div class="col-md-2">
+        <label for="filter-has-defect" class="form-label">Дефекты:</label>
+        <select id="filter-has-defect" class="form-select">
+          <option value="all">Все</option>
+          <option value="yes">Только с дефектами</option>
+          <option value="no">Без дефектов</option>
+        </select>
+      </div>
+
+      <!-- кнопки справа -->
+      <div class="col-auto ms-auto d-flex gap-2 position-relative">
+        <button id="reset-all-filters" class="btn btn-outline-danger">Сбросить все фильтры</button>
+
+        <!-- основная кнопка -->
+        <button id="download-excel" class="btn btn-success">Скачать Excel</button>
+
+        <!-- выпадающая панель -->
+        <div id="dl-panel" class="card shadow-sm" style="display:none; position:absolute; right:0; top:42px; z-index:1500; min-width:260px;">
+          <div class="list-group list-group-flush">
+            <button id="dl-with-photos"  class="list-group-item list-group-item-action">Скачать с фото</button>
+            <button id="dl-no-photos"    class="list-group-item list-group-item-action">Скачать без фото</button>
+            <button id="dl-custom"       class="list-group-item list-group-item-action">Custom…</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <table class="table table-bordered table-hover table-striped align-middle">
+      <thead>
+        <tr>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span>VIN</span>
+              <!-- комбинированный фильтр: VIN/Бренд/Модель/Код комплектации -->
+              <button class="filter-btn" data-col="vin" title="Фильтр VIN / Бренд / Модель / Код">
+                <i class="bi bi-funnel"></i>
+              </button>
+            </div>
+          </th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span>Дата, время</span>
+              <!-- фильтр по диапазону даты и времени -->
+              <button class="filter-btn" data-col="date" title="Фильтр по дате/времени">
+                <i class="bi bi-funnel"></i>
+              </button>
+            </div>
+          </th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span>Линия</span>
+              <button class="filter-btn" data-col="line" title="Фильтр по линии">
+                <i class="bi bi-funnel"></i>
+              </button>
+            </div>
+          </th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span>Деталь</span>
+              <button class="filter-btn" data-col="unit" title="Фильтр по детали">
+                <i class="bi bi-funnel"></i>
+              </button>
+            </div>
+          </th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span>Дефект</span>
+              <button class="filter-btn" data-col="defect" title="Фильтр по дефекту">
+                <i class="bi bi-funnel"></i>
+              </button>
+            </div>
+          </th>
+          <th>Комментарий</th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span>Грейд</span>
+              <button class="filter-btn" data-col="grade" title="Фильтр по грейду">
+                <i class="bi bi-funnel"></i>
+              </button>
+            </div>
+          </th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span>Контролер</span>
+              <button class="filter-btn" data-col="controller" title="Фильтр по контролеру">
+                <i class="bi bi-funnel"></i>
+              </button>
+            </div>
+          </th>
+          <th>Фото</th>
+          {% if request.user.role == "" %}
+            <th>Действия</th>
+          {% endif %}
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for vin, entries in records_grouped %}
+          {% for entry in entries %}
+          <tr class="{% if entry.has_defect %}table-danger{% else %}table-success{% endif %}">
+            {% if forloop.first %}
+              {% with trace=vin_trace_map|get_item:vin %}
+                <td rowspan="{{ entries|length }}"
+                    data-brand="{{ trace.brand|default_if_none:'' }}"
+                    data-model="{{ trace.model|default_if_none:'' }}"
+                    data-config="{{ trace.config_code|default_if_none:'' }}">
+                  <div style="white-space: nowrap;">
+                    <a href="{% url 'vin_tracking_view' vin=vin %}" class="vin-link" target="_blank" rel="noopener noreferrer">
+                      {{ vin }}
+                    </a>
+                  </div>
+                  <div style="font-size: 0.9em; color: #6c757d;">
+                    {{ trace.brand|default:"" }}<br>
+                    {{ trace.model|default:"" }}<br>
+                    {{ trace.config_code|default:"" }}
+                  </div>
+                </td>
+              {% endwith %}
+            {% endif %}
+            <td>{{ entry.date|date:"d.m.Y H:i" }}</td>
+            <td>{{ entry.line|default_if_none:"" }}</td>
+            <td>{{ entry.unit|default_if_none:"" }}</td>
+            <td>{{ entry.defect_description|default_if_none:"" }}</td>
+            <td>{{ entry.comment|default_if_none:"" }}</td>
+            <td>{{ entry.grade|default_if_none:"" }}</td>
+            <td class="controller-info">
+              {{ entry.controller }}
+              {% with controller_users|dict_get:entry.controller as user %}
+                {% if user %}
+                  <small>{{ user.last_name }} {{ user.first_name }}</small>
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              {% with photos=entry.photos %}
+                {% if photos and photos|length > 0 %}
+                  {% with first=photos.0 %}
+                    <a class="photo-chip"
+                       href="{% url 'view_image' image_path=first|cut:'/media/' %}?index=0&group={{ entry.group_key }}&photos={{ entry.photos_json|urlencode }}">
+                      Фото ({{ photos|length }})
+                    </a>
+                  {% endwith %}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              {% endwith %}
+            </td>
+            {% if request.user.role == "" %}
+              <td class="text-center">
+                <a href="{% url 'assembly_post_edit' vin=vin post_name=post timestamp=entry.date|date:'c' %}" class="me-2 text-primary fs-4 text-decoration-none" title="Редактировать">
+                  <i class="bi bi-pencil-square"></i>
+                </a>
+                <a href="#" class="text-danger fs-4 text-decoration-none" title="Удалить" onclick="confirmDelete('{{ vin }}', '{{ post }}', '{{ entry.date|date:'c' }}')">
+                  <i class="bi bi-trash3"></i>
+                </a>
+              </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+    <div id="filter-popover" role="dialog" aria-hidden="true">
+      <div class="fp-head">
+        <strong id="fp-title">Фильтр</strong>
+        <div class="d-flex gap-2">
+          <button id="fp-select-all" class="btn btn-sm btn-outline-secondary">Выбрать все</button>
+          <button id="fp-unselect-all" class="btn btn-sm btn-outline-secondary">Снять все</button>
+          <button id="fp-reset" class="btn btn-sm btn-outline-danger">Сбросить</button>
+        </div>
+      </div>
+      <div id="fp-body" class="fp-body"></div>
+      <div class="fp-foot">
+        <button id="fp-apply" class="btn btn-sm btn-success">Применить</button>
+      </div>
+    </div>
+</div>
+
+<!-- Модальное окно для фото -->
+<div id="image-modal" class="modal" style="display: none;">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <img id="modal-img" class="modal-content">
+    <button id="prev-btn" class="nav-btn left" onclick="showPrev()">&#10094;</button>
+    <button id="next-btn" class="nav-btn right" onclick="showNext()">&#10095;</button>
+</div>
+<script>
+function confirmDelete(vin, post, timestamp) {
+    if (confirm("Удалить эту запись?")) {
+        window.location.href = `/users/delete-entry/${vin}/${post}/${timestamp}/`;
+    }
+}
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // --- элементы
+  const tbodyRows = Array.from(document.querySelectorAll('tbody tr'));
+  const filterBtns = Array.from(document.querySelectorAll('.filter-btn'));
+  const pop = document.getElementById('filter-popover');
+  const fpTitle = document.getElementById('fp-title');
+  const fpBody  = document.getElementById('fp-body');
+  const btnApply = document.getElementById('fp-apply');
+  const btnReset = document.getElementById('fp-reset');
+  const btnAll   = document.getElementById('fp-select-all');
+  const btnNone  = document.getElementById('fp-unselect-all');
+  const quickSearch    = document.getElementById('quick-search');
+  const hasDefectSel   = document.getElementById('filter-has-defect');
+  const resetAllBtn    = document.getElementById('reset-all-filters');
+  const downloadExcelBtn = document.getElementById('download-excel');
+  // если есть namespace у приложения (app_name='users'), используй 'users:assembly_post_export'
+  const exportUrlPhotos   = "{% url 'assembly_post_export' %}?post={{ post|urlencode }}";
+  const exportUrlNoPhotos = "{% url 'assembly_post_export_nophotos' %}?post={{ post|urlencode }}";
+  const exportUrlCustom   = "{% url 'assembly_post_export_custom' %}?post={{ post|urlencode }}";
+
+  // --- CSRF из куки Django
+  function getCsrfToken(){
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  // --- список путей к фото из ссылки "Фото (N)"
+  function photosFromRow(row){
+    const a = row.querySelector('a.photo-chip');
+    if (!a) return [];
+    try{
+      const u = new URL(a.getAttribute('href'), window.location.origin);
+      const enc = u.searchParams.get('photos') || '';
+      return JSON.parse(decodeURIComponent(enc));
+    }catch(e){ return []; }
+  }
+
+  /* ====== элементы меню (новые id под твою разметку) ====== */
+  const dlPanel = document.getElementById('dl-panel');
+  const dlWithPhotosBtn = document.getElementById('dl-with-photos');
+  const dlNoPhotosBtn   = document.getElementById('dl-no-photos');
+  const dlCustomBtn     = document.getElementById('dl-custom');
+
+  /* выпадающая панель под кнопкой "Скачать Excel" */
+  function toggleDlPanel(show){
+    if (show === undefined) show = (dlPanel.style.display==='none' || !dlPanel.style.display);
+    dlPanel.style.display = show ? 'block' : 'none';
+  }
+  downloadExcelBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDlPanel(true);
+  });
+  document.addEventListener('click', (e)=>{
+    if (dlPanel.style.display==='block' && !dlPanel.contains(e.target) && e.target!==downloadExcelBtn){
+      toggleDlPanel(false);
+    }
+  });
+
+  /* универсальный POST->blob->скачать (используем твою postAndDownload) */
+  /* см. выше: у тебя уже есть postAndDownload(url, payload, fallbackName, btnForState) */
+
+  /* === обработчики двух прямых сценариев === */
+  // "Скачать с фото"
+  dlWithPhotosBtn?.addEventListener('click', async ()=>{
+    toggleDlPanel(false);
+    const rows = collectFilteredRowsForExport();
+    if (!rows.length){ alert('Нет строк, подходящих под текущие фильтры.'); return; }
+    await postAndDownload(exportUrlPhotos, { rows }, 'export_with_photos.xlsx', dlWithPhotosBtn);
+  });
+  // "Скачать без фото"
+  dlNoPhotosBtn?.addEventListener('click', async ()=>{
+    toggleDlPanel(false);
+    const rows = collectFilteredRowsForExport();
+    if (!rows.length){ alert('Нет строк, подходящих под текущие фильтры.'); return; }
+    await postAndDownload(exportUrlNoPhotos, { rows }, 'export_no_photos.xlsx', dlNoPhotosBtn);
+  });
+
+  /* ====== кастомный модал ====== */
+  const customModal = document.getElementById('custom-modal');
+  const customCloseX = document.getElementById('custom-close-x');
+  const customCancel = document.getElementById('custom-cancel');
+  const customExport = document.getElementById('custom-export');
+  const customSelectAll = document.getElementById('custom-select-all');
+  const customUnselectAll = document.getElementById('custom-unselect-all');
+  const photosCheckbox = document.getElementById('col-photos');
+  const photoLimitWrap = document.getElementById('photo-limit-wrap');
+  const photoLimitInput = document.getElementById('photo-limit');
+
+  function openCustom(){ customModal.style.display='block'; }
+  function closeCustom(){ customModal.style.display='none'; }
+
+  // открыть кастом из меню
+  dlCustomBtn?.addEventListener('click', ()=>{
+    toggleDlPanel(false);
+    openCustom();
+  });
+
+  // закрытие модала
+  customCloseX?.addEventListener('click', closeCustom);
+  customCancel?.addEventListener('click', closeCustom);
+  customModal?.addEventListener('click',(e)=>{ if (e.target===customModal) closeCustom(); });
+
+  // показать/скрыть поле "Макс. фото" при (де)активации чекбокса "Фото"
+  function refreshPhotoLimit(){
+    photoLimitWrap.style.display = photosCheckbox?.checked ? '' : 'none';
+  }
+  photosCheckbox?.addEventListener('change', refreshPhotoLimit);
+  refreshPhotoLimit();
+
+  // выбрать все/снять все (VIN оставляем включённым и disabled)
+  function setAllCols(checked){
+    document.querySelectorAll('.col-opt').forEach(cb=>{
+      if (cb.id==='col-vin') return;
+      cb.checked = !!checked;
+    });
+    refreshPhotoLimit();
+  }
+  customSelectAll?.addEventListener('click', ()=> setAllCols(true));
+  customUnselectAll?.addEventListener('click', ()=> setAllCols(false));
+
+  // запуск кастом-экспорта
+  customExport?.addEventListener('click', async ()=>{
+    const rows = collectFilteredRowsForExport();
+    if (!rows.length){ alert('Нет строк, подходящих под текущие фильтры.'); return; }
+
+    // жёсткий порядок колонок
+    const ORDER = ['vin','brand','model','config_code','date','time','line','unit','defect','comment','grade','controller','responsible','photos'];
+    const chosen = ORDER.filter(k=>{
+      const el = document.querySelector(`.col-opt[value="${k}"]`);
+      return el && el.checked;
+    });
+    if (!chosen.length){ alert('Выберите хотя бы одну колонку.'); return; }
+
+    const payload = { rows, columns: chosen };
+    if (chosen.includes('photos')){
+      const n = parseInt(photoLimitInput.value, 10);
+      if (!isNaN(n) && n >= 1) payload.photo_limit = n;
+    }
+
+    closeCustom();
+    await postAndDownload(exportUrlCustom, payload, 'export_custom.xlsx', customExport);
+  });
+
+  /* ====== helper: собрать отфильтрованные строки (как сейчас) ====== */
+  function collectFilteredRowsForExport(){
+    const result = [];
+    groups.forEach(g => {
+      g.rows.forEach(row => {
+        if (!rowMatchesAll(row, g)) return;
+        const dtText = (getCellText(row, 'date') || '').trim();
+        const [date = '', time = ''] = dtText.split(' ');
+        result.push({
+          vin: g.vin,
+          brand: g.brand || '',
+          model: g.model || '',
+          config_code: g.config || '',
+          date: date,
+          time: time,
+          line: getCellText(row, 'line') || '',
+          unit: getCellText(row, 'unit') || '',
+          defect: getCellText(row, 'defect') || '',
+          comment: getCellText(row, 'comment') || '',
+          grade: getCellText(row, 'grade') || '',
+          controller: getCellText(row, 'controller') || '',
+          photos: photosFromRow(row) || []
+        });
+      });
+    });
+    return result;
+  }
+
+  /* ====== helper: POST -> скачать blob ====== */
+  async function postAndDownload(url, payload, fallbackName='export.xlsx', btnForState=null){
+    const prev = btnForState?.innerHTML;
+    if (btnForState){ btnForState.disabled = true; btnForState.innerHTML = 'Готовлю…'; }
+    try{
+      const res = await fetch(url, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken':getCsrfToken()},
+        credentials:'same-origin',
+        body: JSON.stringify(payload||{})
+      });
+      if (!res.ok){
+        const msg = await res.text().catch(()=> '');
+        throw new Error(msg || `Ошибка (${res.status})`);
+      }
+      const blob = await res.blob();
+      let filename = fallbackName;
+      const dispo = res.headers.get('Content-Disposition') || '';
+      const m = dispo.match(/filename\*?=(?:UTF-8''|")?([^";]+)[";]?/i);
+      if (m && m[1]) filename = decodeURIComponent(m[1]);
+
+      const urlObj = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = urlObj; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(urlObj);
+    } catch(e){
+      alert(`Не удалось сформировать отчёт: ${e.message || e}`);
+    } finally {
+      if (btnForState){ btnForState.disabled = false; btnForState.innerHTML = prev; }
+    }
+  }
+
+  /* ====== позиционирование поповеров под кнопкой ====== */
+  function placePop(el, anchor){
+    const r = anchor.getBoundingClientRect();
+    const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const width = Math.min(420, Math.max(280, 360));
+    el.style.minWidth = width+'px';
+    let left = r.left, top = r.bottom + 6;
+    if (left + width + 16 > vw) left = vw - width - 16;
+    el.style.left = left + 'px';
+    el.style.top  = top  + 'px';
+  }
+
+
+
+  // 👇 ЭТИ ДВЕ СТРОКИ НУЖНЫ (селекты сверху таблицы)
+  const modelFilterSel  = document.getElementById('filter-model');
+  const defectFilterSel = document.getElementById('filter-defect');
+
+    // --- собрать группы (по VIN)
+  const groups = [];
+  function rebuildGroups(){
+    groups.length = 0;
+    let cur = null;
+    document.querySelectorAll('tbody tr').forEach(row => {
+      const c0 = row.children[0];
+      const isVin = !!(c0 && c0.hasAttribute('rowspan') && c0.dataset && ('brand' in c0.dataset));
+      if (isVin) {
+        if (cur) groups.push(cur);
+        const brand  = c0.dataset.brand?.trim()  || '';
+        const model  = c0.dataset.model?.trim()  || '';
+        const config = c0.dataset.config?.trim() || '';
+        const vinTxt = (c0.querySelector('a')?.textContent || c0.textContent || '')
+                        .trim().split('\n')[0].trim();
+        cur = { rows:[row], first:row, vin:vinTxt, brand, model, config };
+      } else if (cur) {
+        cur.rows.push(row);
+      }
+    });
+    if (cur) groups.push(cur);
+  }
+  rebuildGroups();
+
+  function refreshVinSpans(){
+    // гарантируем правильную VIN-ячейку и корректный rowspan у видимых рядов группы
+    groups.forEach(g => {
+      const vis = g.rows.filter(r => r.style.display !== 'none');
+      const vinCell = g.first.children[0];
+      if (!vinCell || !vinCell.hasAttribute('rowspan') || !('brand' in vinCell.dataset)) return;
+      if (vis.length === 0) return;        // вся группа скрыта
+
+      // если первая видимая строка — не та, где стоит VIN-ячейка, переносим её
+      if (vis[0] !== g.first) {
+        // убрать VIN-ячейку из старой строки и вставить в новую, в самое начало
+        vinCell.remove();
+        vis[0].insertBefore(vinCell, vis[0].firstChild);
+        g.first = vis[0];                  // обновим ссылку на "первую" в группе
+      }
+      // корректный rowspan = число видимых строк этой группы
+      vinCell.rowSpan = vis.length;
+    });
+  }
+
+  function hasVinCell(row){
+    const c0 = row.children[0];
+    // VIN-ячейка: всегда первый <td>, имеет rowspan и data-атрибуты из шаблона
+    return !!(c0 && c0.hasAttribute('rowspan') && c0.dataset && ('brand' in c0.dataset));
+  }
+
+  // --- helpers для значений из строки (по индексам колонок)
+  function getCellText(row, colKey){
+    // первая строка группы содержит td[rowspan] (VIN), остальные — нет
+    const shift = hasVinCell(row) ? 0 : -1;
+
+    // БАЗОВЫЕ индексы как будто VIN-ячейка присутствует
+    const baseIdx = {
+      date: 1,      // Дата, время
+      line: 2,      // Линия
+      unit: 3,      // Деталь
+      defect: 4,    // Дефект
+      comment: 5,   // Комментарий
+      grade: 6,     // Грейд
+      controller: 7 // Контролер (после удаления «Кто виноват» сдвинулся)
+    };
+
+    const idx = baseIdx[colKey];
+    if (idx === undefined) return '';
+    const cell = row.children[idx + shift];
+
+    if (colKey === 'controller') {
+      // берём только логин (первый текст до <small>)
+      const firstText = (cell?.childNodes[0]?.textContent || '').trim();
+      return firstText || (cell?.textContent || '').trim();
+    }
+    return (cell?.textContent || '').trim();
+  }
+
+  // === merge одинаковых "Дата, время" внутри группы VIN ===
+  function getDateCellEl(row){
+    // у первой строки группы есть td[rowspan] с VIN → дата в children[1]
+    // у остальных — дата в children[0]
+    const idx = hasVinCell(row) ? 1 : 0;
+    return row.children[idx] || null;
+  }
+
+  function resetDateMerging(){
+    // снимаем все предыдущие rowspan/скрытия
+    document.querySelectorAll('tbody tr').forEach(row => {
+      const c = getDateCellEl(row);
+      if (c){
+        c.style.display = '';
+        c.removeAttribute('rowspan');
+      }
+    });
+  }
+
+  function mergeVisibleDateCells(){
+    // проходим по группам VIN и объединяем подряд идущие одинаковые даты
+    groups.forEach(g => {
+      const visRows = g.rows.filter(r => r.style.display !== 'none');
+      let i = 0;
+      while (i < visRows.length){
+        const c0 = getDateCellEl(visRows[i]);
+        const t0 = (c0?.textContent || '').trim();
+        let j = i + 1;
+        while (j < visRows.length){
+          const cj = getDateCellEl(visRows[j]);
+          const tj = (cj?.textContent || '').trim();
+          if (tj === t0) j++; else break;
+        }
+        const span = j - i;
+        if (c0 && span > 1){
+          c0.rowSpan = span;
+          for (let k = i + 1; k < j; k++){
+            const ck = getDateCellEl(visRows[k]);
+            if (ck) ck.style.display = 'none';
+          }
+        }
+        i = j;
+      }
+    });
+  }
+
+  function refreshDateMerging(){
+    resetDateMerging();
+    mergeVisibleDateCells();
+  }
+
+  // --- парсинг dd.mm.yyyy HH:MM → Date
+  function parseRusDateTime(s){
+    if (!s) return null;
+    const [dpart,tpart='00:00'] = s.split(' ');
+    const [dd,mm,yyyy] = dpart.split('.').map(n=>parseInt(n,10));
+    const [HH,MM] = tpart.split(':').map(n=>parseInt(n,10)||0);
+    if (!yyyy||!mm||!dd) return null;
+    return new Date(yyyy, mm-1, dd, HH, MM, 0, 0);
+  }
+
+  function sameYMD(a,b){
+    return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+  }
+  function toMin(hhmm){
+    if (!hhmm) return null;
+    const [h,m] = hhmm.split(':').map(n=>parseInt(n,10)||0);
+    return h*60 + m;
+  }
+  function timePasses(dt){
+    // режим смен
+    const tm = dt.getHours()*60 + dt.getMinutes();
+    const tf = toMin(state.timeFrom);
+    const tt = toMin(state.timeTo);
+
+    if (state.shiftMode === 's1'){
+      // 07:30 — 16:30
+      return tm >= (7*60+30) && tm <= (16*60+30);
+    }
+    if (state.shiftMode === 's2'){
+      // 16:30 — 07:30 (через ночь)
+      return (tm >= (16*60+30)) || (tm <= (7*60+30));
+    }
+
+    // режим "Все": использовать ручные поля времени (если заданы)
+    if (tf==null && tt==null) return true;
+
+    // когда обе границы заданы
+    if (tf!=null && tt!=null){
+      if (tf === tt){
+        // особый случай "07:30 -> 07:30": 24ч окно, привязка к началу/концу дат
+        if (state.dateFrom && sameYMD(dt, state.dateFrom)) return tm >= tf;
+        if (state.dateTo   && sameYMD(dt, state.dateTo))   return tm < tt;
+        return true; // для промежуточных дней времени не ограничиваем
+      }
+      if (tf < tt){
+        return tm >= tf && tm <= tt;
+      } else {
+        // диапазон через ночь
+        return (tm >= tf) || (tm <= tt);
+      }
+    }
+
+    // одна граница
+    if (tf!=null) { if (tm < tf) return false; }
+    if (tt!=null) { if (tm > tt) return false; }
+    return true;
+  }
+  function dateTimePasses(dt){
+    if (state.dateFrom && dt < floorDate(state.dateFrom)) return false;
+    if (state.dateTo   && dt > ceilDate(state.dateTo))     return false;
+    return timePasses(dt);
+  }
+
+  // --- текущее состояние фильтров
+  const state = {
+    // VIN-комбо
+    vinText: '',                 // подстрока VIN (опционально)
+    brand: new Set(),            // множественный
+    model: new Set(),
+    config: new Set(),
+    // Дата/время
+    dateFrom: null,              // Date или null
+    dateTo:   null,              // Date или null
+    timeFrom: '',                // "HH:MM" или ''
+    timeTo:   '',                // "HH:MM" или ''
+    // Уникальные «по колонкам»
+    line: new Set(),
+    unit: new Set(),
+    defect: new Set(),
+    grade: new Set(),
+    controller: new Set(),
+    uiModel:  '',  // значение селекта "Фильтр по модели" (lowercase)
+    uiDefect: '',  // значение селекта "Фильтр по дефекту" (lowercase)
+    searchText: '',     // быстрый поиск по таблице
+    hasDefect: 'all',   // 'all' | 'yes' | 'no'
+    shiftMode: 'all',   // 'all' | 's1' | 's2'
+  };
+
+  // --- какие кнопки считать активными
+  function buttonActive(key){
+    if (key==='vin'){
+      return !!(state.vinText || state.brand.size || state.model.size || state.config.size);
+    }
+    if (key==='date'){
+      return !!(state.dateFrom || state.dateTo || state.timeFrom || state.timeTo);
+    }
+    return state[key] && state[key].size>0;
+  }
+
+  // --- применить фильтры (группами)
+  function applyFilters(){
+    // подсветка кнопок
+    filterBtns.forEach(btn => btn.classList.toggle('active', buttonActive(btn.dataset.col)));
+
+    groups.forEach(g => {
+      const matchesGroup = g.rows.some(row => rowMatchesAll(row, g));
+      g.rows.forEach(r => r.style.display = matchesGroup ? '' : 'none');
+    });
+
+  }
+
+
+
+  function rowMatchesAll(row, groupMeta){
+    // --- фильтры из верхних селектов
+    const uiModel  = (state.uiModel  || '').trim().toLowerCase();
+    const uiDefect = (state.uiDefect || '').trim().toLowerCase();
+
+    if (uiModel){
+      const gm = (groupMeta.model || '').toLowerCase();
+      if (!gm.includes(uiModel)) return false;
+    }
+    if (uiDefect){
+      const defectText = (getCellText(row, 'defect') || '').toLowerCase();
+      if (!defectText.includes(uiDefect)) return false;
+    }
+
+    // --- VIN-комбо
+    if (state.vinText && !groupMeta.vin.toLowerCase().includes(state.vinText.toLowerCase())) return false;
+    if (state.brand.size && !state.brand.has(groupMeta.brand))   return false;
+    if (state.model.size && !state.model.has(groupMeta.model))   return false;
+    if (state.config.size && !state.config.has(groupMeta.config))return false;
+
+    // --- Дата/время (через единую логику со сменами)
+    {
+      const dt = parseRusDateTime(getCellText(row, 'date'));
+      if (!dt || !dateTimePasses(dt)) return false;
+    }
+
+    // --- Быстрый поиск по таблице
+    if (state.searchText){
+      const hayGroup = [groupMeta.vin, groupMeta.brand, groupMeta.model, groupMeta.config]
+                        .join(' ').toLowerCase();
+      const rowBundle = [
+        getCellText(row, 'date'),
+        getCellText(row, 'line'),
+        getCellText(row, 'unit'),
+        getCellText(row, 'defect'),
+        getCellText(row, 'comment'),
+        getCellText(row, 'grade'),
+        getCellText(row, 'controller'),
+      ].join(' ').toLowerCase();
+      if (!hayGroup.includes(state.searchText) && !rowBundle.includes(state.searchText)) {
+        return false;
+      }
+    }
+
+    // --- Фильтр по наличию дефектов
+    if (state.hasDefect === 'yes' && !row.classList.contains('table-danger')) return false;
+    if (state.hasDefect === 'no'  && !row.classList.contains('table-success')) return false;
+
+    // --- Остальные колонные фильтры (множественные)
+    const keys = ['line','unit','defect','grade','controller'];
+    for (const k of keys){
+      const set = state[k];
+      if (set && set.size){
+        const v = getCellText(row, k);
+        if (!set.has(v)) return false;
+      }
+    }
+
+    return true;
+  }
+
+  function floorDate(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0,0,0,0); }
+  function ceilDate(d){  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23,59,59,999); }
+
+  // --- собрать уникальные опции по колонке с учётом ДРУГИХ фильтров (адаптивность)
+  function visibleRowsExcept(exceptKeys){
+    // exceptKeys: Set<string>
+    const res = [];
+    groups.forEach(g => {
+      const show = g.rows.some(row => rowMatchesAllExcept(row, g, exceptKeys));
+      if (show) res.push(...g.rows);
+    });
+    return res;
+  }
+
+  function applyTopSelects(){
+    state.uiModel   = (modelFilterSel?.value  || '').toLowerCase();
+    state.uiDefect  = (defectFilterSel?.value || '').toLowerCase();
+    state.searchText = (quickSearch?.value || '').trim().toLowerCase();
+    state.hasDefect  = (hasDefectSel?.value || 'all');
+    applyFilters();
+    rebuildPages();
+  }
+  modelFilterSel?.addEventListener('change', applyTopSelects);
+  defectFilterSel?.addEventListener('change', applyTopSelects);
+  quickSearch?.addEventListener('input', applyTopSelects);       // моментально
+  hasDefectSel?.addEventListener('change', applyTopSelects);
+
+  function rowMatchesAllExcept(row, g, exceptKeys){
+    // верхние селекты
+    if (!exceptKeys.has('uiModel')) {
+      const uiModel = (state.uiModel || '').trim().toLowerCase();
+      if (uiModel && !(g.model || '').toLowerCase().includes(uiModel)) return false;
+    }
+    if (!exceptKeys.has('uiDefect')) {
+      const uiDefect = (state.uiDefect || '').trim().toLowerCase();
+      if (uiDefect && !(getCellText(row, 'defect') || '').toLowerCase().includes(uiDefect)) return false;
+    }
+
+    // VIN-комбо
+    if (!exceptKeys.has('vinText') && state.vinText &&
+        !g.vin.toLowerCase().includes(state.vinText.toLowerCase())) return false;
+    if (!exceptKeys.has('brand')  && state.brand.size   && !state.brand.has(g.brand))   return false;
+    if (!exceptKeys.has('model')  && state.model.size   && !state.model.has(g.model))   return false;
+    if (!exceptKeys.has('config') && state.config.size  && !state.config.has(g.config)) return false;
+
+    // дата/время — единая логика со сменами
+    if (!exceptKeys.has('date')) {
+      const dt = parseRusDateTime(getCellText(row, 'date'));
+      if (!dt || !dateTimePasses(dt)) return false;
+    }
+
+    // остальные колонны
+    for (const k of ['line','unit','defect','grade','controller']){
+      if (exceptKeys.has(k)) continue;
+      const set = state[k];
+      if (set && set.size){
+        const v = getCellText(row, k);
+        if (!set.has(v)) return false;
+      }
+    }
+    return true;
+  }
+
+  function collectUnique(colKey, baseRows){
+    const s = new Set();
+    if (colKey==='brand' || colKey==='model' || colKey==='config'){
+      // собираем с уровнем групп
+      const okGroups = new Set(baseRows.map(r => r.closest('tr')));
+      groups.forEach(g => {
+        // включаем, если хотя бы одна строка группы в baseRows видима
+        if (g.rows.some(r => okGroups.has(r))) {
+          s.add(g[colKey] || '');
+        }
+      });
+    } else {
+      baseRows.forEach(row => {
+        const v = getCellText(row, colKey);
+        if (v) s.add(v);
+      });
+    }
+    return Array.from(s).filter(Boolean).sort((a,b)=>a.localeCompare(b,'ru',{numeric:true}));
+  }
+
+  // --- поповер
+  let openedKey = null;
+
+  resetAllBtn?.addEventListener('click', () => {
+    // 1) закрыть поповер, если открыт
+    if (pop) { pop.style.display = 'none'; openedKey = null; }
+
+    // 2) сбросить визуальные элементы сверху
+    if (modelFilterSel)  modelFilterSel.value  = '';
+    if (defectFilterSel) defectFilterSel.value = '';
+    if (quickSearch)     quickSearch.value     = '';
+    if (hasDefectSel)    hasDefectSel.value    = 'all';
+
+    // 3) сбросить всё состояние фильтров
+    state.uiModel   = '';
+    state.uiDefect  = '';
+    state.searchText = '';
+    state.hasDefect  = 'all';
+
+    state.vinText = '';
+    state.brand.clear();
+    state.model.clear();
+    state.config.clear();
+
+    state.dateFrom = null;
+    state.dateTo   = null;
+    state.timeFrom = '';
+    state.timeTo   = '';
+    state.shiftMode = 'all';
+
+    ['line','unit','defect','grade','controller'].forEach(k => state[k].clear());
+
+    // 4) снять "активность" со всех кнопок-воронок
+    filterBtns.forEach(b => b.classList.remove('active'));
+
+    // 5) применить и пересчитать пагинацию (в начало)
+    paging.current = 1;
+    applyFilters();
+    rebuildGroups();      // обновим мета по группам
+    refreshVinSpans();    // перенесём VIN-ячейку и пересчитаем rowspan
+    rebuildPages();
+  });
+
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const key = btn.dataset.col;
+      if (pop.style.display==='block' && openedKey===key){ pop.style.display='none'; openedKey=null; return; }
+      openedKey = key;
+      renderPopoverFor(key, btn);
+    });
+  });
+
+  document.addEventListener('click', (e)=>{
+    if (pop.style.display==='block' && !pop.contains(e.target)){
+      pop.style.display='none'; openedKey=null;
+    }
+  });
+
+  btnAll.addEventListener('click', () => {
+    if (!openedKey) return;
+
+    // 1) Отметить все чекбоксы (если есть)
+    fpBody.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true);
+
+    // 2) VIN: очистить текстовое поле
+    if (openedKey === 'vin') {
+      const vinInput = fpBody.querySelector('#f_vin_text');
+      if (vinInput) vinInput.value = '';
+    }
+
+    // 3) Дата/время: включить режим "Все", разблокировать время и очистить поля
+    if (openedKey === 'date') {
+      const modeInp = fpBody.querySelector('#f_shift_mode');
+      const tFrom   = fpBody.querySelector('#f_time_from');
+      const tTo     = fpBody.querySelector('#f_time_to');
+      const btns    = fpBody.querySelectorAll('.shift-btn');
+
+      // переключаем режим в "all"
+      if (modeInp) modeInp.value = 'all';
+
+      // подсветка кнопок смен
+      btns.forEach(b => {
+        const on = b.dataset.mode === 'all';
+        b.classList.toggle('btn-success', on);
+        b.classList.toggle('active', on);
+        b.classList.toggle('btn-outline-secondary', !on);
+      });
+
+      // разблокировать и очистить время
+      if (tFrom) { tFrom.disabled = false; tFrom.value = ''; }
+      if (tTo)   { tTo.disabled   = false; tTo.value   = ''; }
+
+      // очистить даты
+      const df = fpBody.querySelector('#f_date_from');
+      const dt = fpBody.querySelector('#f_date_to');
+      if (df) df.value = '';
+      if (dt) dt.value = '';
+    }
+  });
+
+  btnNone.addEventListener('click', () => {
+    if (!openedKey) return;
+    const boxes = fpBody.querySelectorAll('input[type=checkbox]');
+    if (boxes.length) {
+      boxes.forEach(cb => cb.checked = false);
+    }
+    // для VIN текстовое поле не трогаем; для даты чекбоксов нет — ничего не делаем
+  });
+
+  btnReset.addEventListener('click', ()=>{
+    if (!openedKey) return;
+    if (openedKey==='vin'){
+      state.vinText=''; state.brand.clear(); state.model.clear(); state.config.clear();
+    } else if (openedKey==='date'){
+      state.dateFrom=null; state.dateTo=null; state.timeFrom=''; state.timeTo='';
+      state.shiftMode='all';
+    } else {
+      state[openedKey].clear();
+    }
+    pop.style.display='none'; openedKey=null;
+    applyFilters();
+    rebuildPages();
+  });
+
+  btnApply.addEventListener('click', () => {
+    if (!openedKey) return;
+
+    if (openedKey === 'vin') {
+      // собрать: vinText + brand/model/config (чекбоксы)
+      const vinText = fpBody.querySelector('#f_vin_text')?.value || '';
+      state.vinText = vinText.trim();
+      const chosen = key => {
+        const s = new Set();
+        fpBody.querySelectorAll(`input[name="f_${key}"]:checked`).forEach(cb => s.add(cb.value));
+        return s;
+      };
+      const allBrand  = fpBody.querySelectorAll(`input[name="f_brand"]`).length;
+      const allModel  = fpBody.querySelectorAll(`input[name="f_model"]`).length;
+      const allConfig = fpBody.querySelectorAll(`input[name="f_config"]`).length;
+      const b = chosen('brand');  state.brand  = (b.size===0 || b.size===allBrand ) ? new Set() : b;
+      const m = chosen('model');  state.model  = (m.size===0 || m.size===allModel ) ? new Set() : m;
+      const c = chosen('config'); state.config = (c.size===0 || c.size===allConfig) ? new Set() : c;
+
+    } else if (openedKey === 'date') {
+      const df = fpBody.querySelector('#f_date_from')?.value || '';
+      const dt = fpBody.querySelector('#f_date_to')?.value   || '';
+      const tf = fpBody.querySelector('#f_time_from')?.value || '';
+      const tt = fpBody.querySelector('#f_time_to')?.value   || '';
+      const mode = fpBody.querySelector('#f_shift_mode')?.value || 'all';
+
+      // даты
+      state.dateFrom = df ? new Date(df + 'T00:00:00') : null;
+      state.dateTo   = dt ? new Date(dt + 'T00:00:00') : null;
+
+      // режим смен
+      state.shiftMode = mode;
+      if (mode === 's1') {
+        state.timeFrom = '07:30';
+        state.timeTo   = '16:30';
+      } else if (mode === 's2') {
+        state.timeFrom = '16:30';
+        state.timeTo   = '07:30';
+      } else {
+        // 'all' — берём пользовательские значения времени
+        state.timeFrom = tf;
+        state.timeTo   = tt;
+      }
+
+    } else {
+      const chosen = new Set();
+      fpBody.querySelectorAll('input[type=checkbox]:checked').forEach(cb => chosen.add(cb.value));
+      const total = fpBody.querySelectorAll('input[type=checkbox]').length;
+      state[openedKey] = (chosen.size===0 || chosen.size===total) ? new Set() : chosen;
+    }
+
+    pop.style.display = 'none';
+    openedKey = null;
+    applyFilters();
+    rebuildPages();
+  });
+
+  function renderPopoverFor(key, btn){
+    // база для опций — строки, которые видимы под влиянием всех прочих фильтров
+    const except = new Set(key==='vin' ? ['vinText','brand','model','config']
+                           : key==='date' ? ['date'] : [key]);
+    const baseRows = visibleRowsExcept(except);
+
+    if (key === 'vin'){
+      fpTitle.textContent = 'Фильтр: VIN / Бренд / Модель / Код';
+      const brands  = collectUnique('brand',  baseRows);
+      const models  = collectUnique('model',  baseRows);
+      const configs = collectUnique('config', baseRows);
+      fpBody.innerHTML = `
+        <div class="mb-2">
+          <div class="subttl">VIN (подстрока)</div>
+          <input id="f_vin_text" class="form-control form-control-sm" placeholder="Напр.: SK000123" value="${state.vinText||''}">
+        </div>
+        <div class="mb-2">
+          <div class="subttl">Бренд</div>
+          ${brands.map(v=>`
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="f_brand" id="b_${cssId(v)}" value="${escapeHtml(v)}" ${state.brand.size? (state.brand.has(v)?'checked':'') : 'checked'}>
+              <label class="form-check-label" for="b_${cssId(v)}">${escapeHtml(v)}</label>
+            </div>`).join('') || '<div class="text-muted small">Нет значений</div>'}
+        </div>
+        <div class="mb-2">
+          <div class="subttl">Модель</div>
+          ${models.map(v=>`
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="f_model" id="m_${cssId(v)}" value="${escapeHtml(v)}" ${state.model.size? (state.model.has(v)?'checked':'') : 'checked'}>
+              <label class="form-check-label" for="m_${cssId(v)}">${escapeHtml(v)}</label>
+            </div>`).join('') || '<div class="text-muted small">Нет значений</div>'}
+        </div>
+        <div class="mb-2">
+          <div class="subttl">Код комплектации</div>
+          ${configs.map(v=>`
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="f_config" id="c_${cssId(v)}" value="${escapeHtml(v)}" ${state.config.size? (state.config.has(v)?'checked':'') : 'checked'}>
+              <label class="form-check-label" for="c_${cssId(v)}">${escapeHtml(v)}</label>
+            </div>`).join('') || '<div class="text-muted small">Нет значений</div>'}
+        </div>
+      `;
+    } else if (key === 'date'){
+      fpTitle.textContent = 'Фильтр: дата и время';
+      fpBody.innerHTML = `
+        <div class="row g-2 align-items-end">
+          <div class="col-6">
+            <label class="form-label">С даты</label>
+            <input id="f_date_from" type="date" class="form-control form-control-sm" value="${state.dateFrom? isoDate(state.dateFrom):''}">
+          </div>
+          <div class="col-6">
+            <label class="form-label">По дату</label>
+            <input id="f_date_to" type="date" class="form-control form-control-sm" value="${state.dateTo? isoDate(state.dateTo):''}">
+          </div>
+
+          <div class="col-12">
+            <div class="btn-group w-100" role="group" aria-label="Смена">
+              <button type="button" class="btn btn-outline-secondary shift-btn" data-mode="s1">Смена 1 (07:30–16:30)</button>
+              <button type="button" class="btn btn-outline-secondary shift-btn" data-mode="s2">Смена 2 (16:30–07:30)</button>
+              <button type="button" class="btn btn-outline-secondary shift-btn" data-mode="all">Все</button>
+            </div>
+            <input type="hidden" id="f_shift_mode" value="${state.shiftMode||'all'}">
+          </div>
+
+          <div class="col-6">
+            <label class="form-label">С времени</label>
+            <input id="f_time_from" type="time" class="form-control form-control-sm" value="${state.timeFrom||''}">
+          </div>
+          <div class="col-6">
+            <label class="form-label">По времени</label>
+            <input id="f_time_to" type="time" class="form-control form-control-sm" value="${state.timeTo||''}">
+          </div>
+        </div>
+        <div class="text-muted small mt-2">При выборе смены время фиксируется и поля блокируются.</div>
+      `;
+
+      const modeInp = fpBody.querySelector('#f_shift_mode');
+      const tFrom   = fpBody.querySelector('#f_time_from');
+      const tTo     = fpBody.querySelector('#f_time_to');
+      const btns    = fpBody.querySelectorAll('.shift-btn');
+
+      function setMode(mode){
+        modeInp.value = mode;
+        btns.forEach(b=>{
+          const on = b.dataset.mode===mode;
+          b.classList.toggle('btn-success', on);
+          b.classList.toggle('active', on);
+          b.classList.toggle('btn-outline-secondary', !on);
+        });
+
+        if (mode === 's1'){
+          tFrom.value = '07:30';
+          tTo.value   = '16:30';
+          tFrom.disabled = true;
+          tTo.disabled   = true;
+        } else if (mode === 's2'){
+          tFrom.value = '16:30';
+          tTo.value   = '07:30';
+          tFrom.disabled = true;
+          tTo.disabled   = true;
+        } else { // 'all'
+          tFrom.disabled = false;
+          tTo.disabled   = false;
+          // оставить пользовательские значения из state
+          tFrom.value = state.timeFrom || tFrom.value || '';
+          tTo.value   = state.timeTo   || tTo.value   || '';
+        }
+      }
+
+      // Инициализация и обработчики
+      setMode(modeInp.value || 'all');
+      btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+    } else {
+      // уникальные значения для колонки
+      fpTitle.textContent = 'Фильтр: ' + (btn.previousElementSibling?.textContent?.trim() || '');
+      const opts = collectUnique(key, baseRows);
+      fpBody.innerHTML = opts.map(v=>`
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="o_${cssId(v)}" value="${escapeHtml(v)}" ${state[key].size? (state[key].has(v)?'checked':'') : 'checked'}>
+          <label class="form-check-label" for="o_${cssId(v)}">${escapeHtml(v)}</label>
+        </div>`).join('') || '<div class="text-muted small">Нет значений</div>';
+    }
+
+    // позиция поповера под кнопкой
+    const r = btn.getBoundingClientRect();
+    const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const width = Math.min(340, Math.max(260, r.width*9));
+    pop.style.minWidth = width+'px';
+    let left = r.left, top = r.bottom + 6;
+    if (left + width + 16 > vw) left = vw - width - 16;
+    pop.style.left = left + 'px';
+    pop.style.top  = top  + 'px';
+    pop.style.display = 'block';
+  }
+
+  function cssId(s){ return btoa(unescape(encodeURIComponent(s))).replace(/=/g,''); }
+  function escapeHtml(s){ return s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+  function isoDate(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+
+
+
+   // ====== ПАГИНАЦИЯ (листами) ======
+  const paginationBar = document.getElementById('pagination-bar');
+  const pagesWrap = document.querySelector('#page-buttons .pages');
+  const navBtns = document.querySelectorAll('#page-buttons .page-nav');
+  const pageSizeSel = document.getElementById('page-size');
+
+  const paging = {
+    size: parseInt(pageSizeSel?.value,10) || 100,
+    pages: [],
+    current: 1,
+    windowStart: 1
+  };
+
+  function matchedGroups() {
+    const arr = [];
+    groups.forEach((g, idx) => {
+      const ok = g.rows.some(row => rowMatchesAll(row, g));
+      if (ok) arr.push({g, idx, rows: g.rows.length});
+    });
+    return arr;
+  }
+
+  function rebuildPages() {
+    const mg = matchedGroups();
+    const totalRows = mg.reduce((s,x)=>s+x.rows, 0);
+
+    if (!paginationBar) return;
+
+    // ❗ если подходящих строк меньше текущего размера страницы — скрываем пагинацию
+    if (totalRows < paging.size) {
+      paginationBar.style.display = 'none';
+      paging.pages = [];
+      paging.current = 1;
+      paging.windowStart = 1;
+
+      // показать все подходящие группы целиком
+      groups.forEach(g => {
+        const ok = g.rows.some(row => rowMatchesAll(row, g));
+        g.rows.forEach(r => r.style.display = ok ? '' : 'none');
+      });
+      refreshDateMerging();
+      return;
+    }
+
+    // ... дальше твой код сборки страниц как был (без изменений)
+    const pages = [];
+    let startIdx = 0, rowsFrom = 1, acc = 0;
+    for (let i = 0; i < mg.length; i++) {
+      const gr = mg[i];
+      if (acc > 0 && acc + gr.rows > paging.size) {
+        pages.push({ gFrom: startIdx, gTo: i-1, rowsFrom, rowsTo: rowsFrom + acc - 1 });
+        startIdx = i;
+        rowsFrom = pages[pages.length-1].rowsTo + 1;
+        acc = 0;
+      }
+      acc += gr.rows;
+    }
+    if (acc > 0) {
+      pages.push({ gFrom: startIdx, gTo: mg.length-1, rowsFrom, rowsTo: rowsFrom + acc - 1 });
+    }
+
+    paging.pages = pages;
+    paging.current = Math.min(paging.current, pages.length) || 1;
+
+    const maxWin = Math.max(1, pages.length - 5 + 1);
+    if (paging.current < paging.windowStart) paging.windowStart = paging.current;
+    if (paging.current >= paging.windowStart + 5) paging.windowStart = Math.min(paging.current - 4, maxWin);
+
+    renderPager(totalRows);
+    showPage(paging.current);
+    refreshDateMerging();
+  }
+
+  function renderPager(totalRows){
+    paginationBar.style.display = '';
+
+    const total = paging.pages.length;
+    let from = paging.windowStart;
+    let to = Math.min(from + 5 - 1, total);
+
+    pagesWrap.innerHTML = '';
+    for (let i = from; i <= to; i++) {
+      const b = document.createElement('button');
+      b.className = 'page-btn btn btn-sm btn-outline-secondary' + (i===paging.current ? ' active' : '');
+      b.textContent = i;
+      b.dataset.page = i;
+      b.addEventListener('click', ()=>{
+        paging.current = i;
+        showPage(i);
+        renderPager(totalRows);
+      });
+      pagesWrap.appendChild(b);
+    }
+
+    navBtns.forEach(btn=>{
+      const dir = parseInt(btn.dataset.dir,10);
+      if (total <= 5) {
+        btn.style.display = 'none';
+      } else {
+        btn.style.display = '';
+        btn.disabled = (dir<0 ? (from<=1) : (to>=total));
+        btn.onclick = () => {
+          const step = 1;
+          const maxWin = Math.max(1, total - 5 + 1);
+          paging.windowStart = Math.min(Math.max(1, paging.windowStart + dir*step), maxWin);
+          renderPager(totalRows);
+        };
+      }
+    });
+  }
+
+  function showPage(pageNum){
+    const mg = matchedGroups();
+    const p = paging.pages[pageNum-1];
+    // скрыть все подходящие
+    mg.forEach(obj => obj.g.rows.forEach(r => r.style.display = 'none'));
+    // показать только группы на текущей странице
+    for (let i = p.gFrom; i <= p.gTo; i++){
+      mg[i].g.rows.forEach(r => r.style.display = '');
+    }
+    // на всякий скрыть те, что не проходят фильтры
+    const mgIdx = new Set(mg.slice(p.gFrom, p.gTo+1).map(x=>x.idx));
+    groups.forEach((g, idx) => {
+      if (!mgIdx.has(idx)){
+        const ok = mg.find(x=>x.idx===idx);
+        if (!ok) g.rows.forEach(r => r.style.display = 'none');
+      }
+    });
+    refreshDateMerging();
+  }
+
+  // изменение размера страницы
+  pageSizeSel?.addEventListener('change', ()=>{
+    paging.size = parseInt(pageSizeSel.value,10) || 100;
+    paging.current = 1;
+    rebuildPages();
+  });
+
+  // === ДЕФОЛТ: сегодня по окну 07:30 → 07:30 (локальное время браузера) ===
+  (function setDefaultToday0730(){
+    const now = new Date();
+    const today0730 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7, 30, 0, 0);
+
+    // если сейчас до 07:30 — окно это "вчера 07:30 → сегодня 07:30"
+    const start = (now < today0730)
+      ? new Date(today0730.getTime() - 24*60*60*1000)
+      : today0730;
+    const end = (now < today0730)
+      ? today0730
+      : new Date(today0730.getTime() + 24*60*60*1000);
+
+    // выставляем состояние фильтров даты/времени
+    state.dateFrom = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    state.dateTo   = new Date(end.getFullYear(),   end.getMonth(),   end.getDate());
+    state.timeFrom = "07:30";
+    state.timeTo   = "07:30";
+
+    // применяем сразу при загрузке
+    applyFilters();
+    rebuildPages();
+  })();
+
+  // 👉 ВЫЗОВЫ ДОЛЖНЫ ИДТИ ПОСЛЕ ОБЪЯВЛЕНИЯ ВСЕГО ВЫШЕ:
+  applyTopSelects();
+
+  // --- автообновление пагинации при любых изменениях таблицы ---
+
+  // простая дебаунс-функция, чтобы не дёргать пересчёт слишком часто
+  function _debounce(fn, wait = 120) {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), wait);
+    };
+  }
+
+  // единая функция пересборки
+  const _repage = _debounce(() => {
+    if (typeof rebuildGroups === 'function') rebuildGroups();
+    refreshVinSpans();
+    if (typeof rebuildPages === 'function') rebuildPages(); // этого достаточно
+  }, 80);
+
+  // 1) следим за изменениями tbody (появление/скрытие строк, класс/стиль и т.д.)
+  (function initPaginationAutoRefresh() {
+    const table = document.querySelector('table');
+    const tbody = table ? table.querySelector('tbody') : null;
+    if (!tbody || typeof MutationObserver === 'undefined') return;
+
+    const obs = new MutationObserver(_repage);
+    obs.observe(tbody, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'] // без 'style' и 'hidden'
+    });
+
+    // 2) смена размера страницы тоже пересобирает пагинацию
+    const pageSize = document.getElementById('page_size') || document.getElementById('page-size');
+    if (pageSize) pageSize.addEventListener('change', _repage);
+
+    // 3) если у тебя есть быстрый поиск VIN — тоже триггерим
+    const vinSearch = document.getElementById('quick-search');
+    if (vinSearch) vinSearch.addEventListener('input', _repage);
+
+    // 4) кнопки «Применить/Сбросить» в поповере фильтров (если есть)
+    const pop = document.getElementById('filter-popover');
+    if (pop) {
+      pop.addEventListener('click', (e) => {
+        const id = (e.target.id || '');
+        if (id.includes('apply') || id.includes('reset')) _repage();
+      });
+    }
+
+    // первичная сборка при загрузке
+    _repage();
+  })();
+});
+</script>
+<!-- Модал настроек кастом-экспорта -->
+<div id="custom-modal" class="modal" style="display:none;">
+  <div class="modal-dialog" style="max-width:680px;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title m-0">Выберите колонки для экспорта</h5>
+        <button type="button" class="btn-close" aria-label="Close" id="custom-close-x"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <!-- фиксированный порядок; просто включаем/выключаем -->
+          <div class="col-6">
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="vin" id="col-vin" checked disabled><label class="form-check-label" for="col-vin">VIN</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="brand" id="col-brand" checked><label class="form-check-label" for="col-brand">Бренд</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="model" id="col-model" checked><label class="form-check-label" for="col-model">Модель</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="config_code" id="col-config" checked><label class="form-check-label" for="col-config">Код комплектации</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="date" id="col-date" checked><label class="form-check-label" for="col-date">Дата</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="time" id="col-time" checked><label class="form-check-label" for="col-time">Время</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="line" id="col-line" checked><label class="form-check-label" for="col-line">Линия</label></div>
+          </div>
+          <div class="col-6">
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="unit" id="col-unit" checked><label class="form-check-label" for="col-unit">Деталь</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="defect" id="col-defect" checked><label class="form-check-label" for="col-defect">Дефект</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="comment" id="col-comment" checked><label class="form-check-label" for="col-comment">Комментарий</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="grade" id="col-grade" checked><label class="form-check-label" for="col-grade">Грейд</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="controller" id="col-controller" checked><label class="form-check-label" for="col-controller">Контролер</label></div>
+            <div class="form-check mb-1"><input class="form-check-input col-opt" type="checkbox" value="responsible" id="col-resp"><label class="form-check-label" for="col-resp">Ответственный</label></div>
+
+            <div class="form-check mt-2 mb-1">
+              <input class="form-check-input col-opt" type="checkbox" value="photos" id="col-photos">
+              <label class="form-check-label" for="col-photos">Фото</label>
+            </div>
+            <div id="photo-limit-wrap" class="ms-4" style="display:none;">
+              <label for="photo-limit" class="form-label">Макс. фото на строку:</label>
+              <input id="photo-limit" type="number" min="1" value="3" class="form-control form-control-sm" style="max-width:120px;">
+              <div class="form-text">Если не задано — берётся максимум по данным.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <div>
+          <button id="custom-select-all" class="btn btn-outline-secondary btn-sm" type="button">Выбрать все</button>
+          <button id="custom-unselect-all" class="btn btn-outline-secondary btn-sm" type="button">Снять все</button>
+        </div>
+        <div>
+          <button id="custom-cancel" class="btn btn-outline-secondary" type="button">Отмена</button>
+          <button id="custom-export" class="btn btn-success" type="button">Скачать</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

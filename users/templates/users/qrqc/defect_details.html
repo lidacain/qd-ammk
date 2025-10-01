@@ -1,0 +1,123 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}QRR — Дефекты{% endblock %}
+
+{% block content %}
+<style>
+  .qrr-wrap{max-width:1400px;margin:8px auto 24px;}
+  .card-slim{box-shadow:0 8px 22px rgba(0,0,0,.06);}
+  .col-left{min-width:260px}
+  .col-mid{min-width:260px}
+  .col-right{min-width:260px}
+  .qrr-grid> .col-left,
+  .qrr-grid> .col-mid,
+  .qrr-grid> .col-right{flex:0 0 33.333%;max-width:33.333%;overflow-wrap:break-word;white-space:normal}
+  .qrr-grid{align-items:stretch}
+  .divider-v{align-self:stretch;width:1px;background:linear-gradient(180deg,#e9ecef,transparent)}
+  .badge-sticky{position:sticky;top:8px}
+  .photo-btn{display:flex;align-items:center;justify-content:center;width:220px;height:120px;border-radius:16px;border:1px solid #adb5bd;background:#f8f9fa;color:#495057;font-weight:600;text-decoration:none}
+  .photo-btn:hover{background:#e9ecef;color:#212529;text-decoration:none}
+  @media (max-width: 991.98px){.qrr-grid{display:block}.col-left,.col-mid,.col-right{min-width:unset}.qrr-grid> .col-left,.qrr-grid> .col-mid,.qrr-grid> .col-right{flex:0 0 100%;max-width:100%}.divider-v{display:none}.card-body{padding:12px}.photo-btn{width:100%;height:90px}}
+  .resp-line{display:block;margin:.1rem 0;padding:.2rem .4rem;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;font-size:.925rem}
+  .kv{display:flex;gap:8px;margin:2px 0}
+  .kv .k{color:#6b7280;min-width:140px}
+</style>
+
+<div class="qrr-wrap">
+  {% if not items %}
+    <div class="alert alert-light border">Дефекты не найдены.</div>
+  {% else %}
+    {% for d in items %}
+      <div class="card card-slim mb-3">
+        <div class="card-body">
+          <div class="d-lg-flex qrr-grid gap-3">
+
+            <!-- LEFT column — identical style/fields as in QRR -->
+            <div class="col-left flex-fill">
+              <div class="mb-1 fw-semibold">{{ d.vin|default:"—" }}</div>
+
+              {# brand/model line (if present in item or via optional vin_trace_map) #}
+              {% if d.brand or d.model %}
+                <div class="mb-1 text-muted">
+                  {{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}
+                </div>
+              {% else %}
+                {% if vin_trace_map %}
+                  {% with trace=vin_trace_map|get_item:d.vin %}
+                    {% if trace %}
+                      <div class="mb-1 text-muted">
+                        {{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                {% endif %}
+              {% endif %}
+
+              <div class="mb-1">
+                {% firstof d.post "—" %} • Линия {{ d.line|default:"—" }} • {% firstof d.zone "—" %}
+              </div>
+
+              <div class="mb-1">{{ d.unit|default:"—" }}</div>
+              <div class="mb-1">{% firstof d.defect_description d.defect_name d.name "—" %}</div>
+              {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+
+              <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+              <div class="mb-1"><span class="text-muted">{% firstof d.controller_raw d.controller "—" %}</span></div>
+              <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+              <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+            </div>
+
+            <div class="divider-v"></div>
+
+            <!-- MIDDLE column — identical photo button behaviour as in QRR -->
+            <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+              {% if d.photos %}
+                <a class="photo-btn"
+                   href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                   target="_blank" rel="noopener noreferrer">
+                  Фото ({{ d.photos|length }})
+                </a>
+              {% else %}
+                <span class="text-muted">Фото нет</span>
+              {% endif %}
+            </div>
+
+            <div class="divider-v"></div>
+
+            <!-- RIGHT column — ID, assigned by, responsibles (simple list) -->
+            <div class="col-right flex-fill">
+              <div class="mb-2">
+                <span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id|default:"—" }}</span>
+              </div>
+
+              {% if d.qrr_responsible_fio or d.qrr_set_by or d.extra.qrr_responsible_fio or d.extra.qrr_set_by or d.qrr_set_date_str or d.qrr_set_time_str or d.set_date_str or d.set_time_str or d.extra.qrr_set_at %}
+                <div class="mb-2 text-muted small">
+                  Назначил: {% firstof d.qrr_responsible_fio d.qrr_set_by d.extra.qrr_responsible_fio d.extra.qrr_set_by "—" %}
+                  {% if d.qrr_set_date_str or d.qrr_set_time_str %}
+                    • {{ d.qrr_set_date_str|default:"" }} {{ d.qrr_set_time_str|default:"" }}
+                  {% elif d.set_date_str or d.set_time_str %}
+                    • {{ d.set_date_str|default:"" }} {{ d.set_time_str|default:"" }}
+                  {% elif d.extra.qrr_set_at %}
+                    • {{ d.extra.qrr_set_at }}
+                  {% endif %}
+                </div>
+              {% endif %}
+
+              {% if d.extra and d.extra.qrr_responsibles %}
+                <div class="mb-2">
+                  {% for nm in d.extra.qrr_responsibles %}
+                    <span class="resp-line">{{ nm }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

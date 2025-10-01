@@ -1,0 +1,1837 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% block title %}QRQC — {{ brand|default:"Бренд" | capfirst }}{% endblock %}
+
+{% block content %}
+<style>
+  :root{
+    --bg: #f6f8fb;
+    --card:#ffffff;
+    --text:#111827;
+    --muted:#6b7280;
+    --accent:#3b82f6; /* столбцы (VINs/defects) */
+    --line1:#f97316; /* DPU */
+    --line2:#16a34a; /* STR */
+    --danger:#ef4444; /* highlight (selected day) */
+    --grid:#eef2f7;
+    --shadow: 0 10px 25px rgba(16,24,40,.08);
+  }
+  .page-wrap{max-width:1400px;margin:8px auto 28px;}
+  .head{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:12px;margin:4px 2px 18px;
+  }
+  .head h1{font-size:22px;margin:0;color:var(--text);letter-spacing:.2px}
+  .filters{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:6px 10px;font-size:13px;color:#111827aa}
+
+  .grid-main{
+    display:grid;
+    grid-template-columns: 2fr 1fr;
+    gap:22px;
+  }
+  .weekly-card{ grid-column: 1; }
+  .grades-card{ grid-column: 2; }
+  .posts-card{ grid-column: 1; }
+  .models-card{ grid-column: 2; }
+  .resp-card{ grid-column: 1 / -1; }
+  .chart.chart-tall{ height: 380px; }
+  .chart.chart-wide{ height: 360px; }
+  @media (max-width: 1200px){
+    .grid-main{ grid-template-columns: 1fr; }
+    .grades-card,.models-card{ grid-column: 1; }
+  }
+  .grid-bottom{display:grid;grid-template-columns: 1fr; gap:22px; margin-top:22px;}
+  .card{background:var(--card);border:1px solid #f1f5f9;box-shadow:var(--shadow);border-radius:16px;padding:12px}
+  .card h3{margin:0 0 8px;color:var(--muted);font-weight:700;font-size:14px}
+  .chart{height:280px}
+  .chart.chart-small{height:220px}
+
+  table.qrtable{width:100%;border-collapse:collapse;font-size:13px}
+  .qrtable th,.qrtable td{border:1px solid #e5e7eb;padding:8px 10px;vertical-align:top}
+  .qrtable th{background:#f8fafc;color:#334155;font-weight:700}
+  .qrtable td.num, .qrtable th.num{text-align:center;width:56px}
+  .qrtable td.count{font-weight:700;text-align:center;width:70px}
+  .muted{color:var(--muted)}
+  .controls{display:flex;gap:6px;margin-bottom:8px;flex-wrap:nowrap}
+  .btn{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:6px 10px;cursor:pointer}
+  .btn.active{outline:2px solid rgba(59,130,246,.5)}
+  .pill{background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:5px 8px;font-size:11px;color:#111827aa;cursor:pointer;user-select:none}
+  .pill.active{color:#111827;border-color:#93c5fd;background:#eff6ff}
+  .controls .btn.active{ background:#eff6ff; border-color:#93c5fd; }
+  .controls .btn.active{ background:#eff6ff; border-color:#93c5fd; }
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+  .switch-view{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #e5e7eb;border-radius:10px;padding:6px 10px;font-size:12px;background:#fff;cursor:pointer;width:92px;min-height:32px;white-space:nowrap}
+  .switch-view.active{outline:2px solid rgba(59,130,246,.5)}
+  #aggControls{ gap:6px; }
+  .hidden{display:none}
+  .picker{display:flex;gap:6px;align-items:center}
+  .picker select{border:1px solid #e5e7eb;border-radius:8px;padding:6px 8px;font-size:12px;background:#fff;cursor:pointer}
+  /* KTV blocks */
+  .ktv-wrap{max-width:1400px;margin:22px auto 0;display:block}
+  .ktv-card .muted{font-size:12px}
+  .ktv-actions{display:flex;gap:6px;align-items:center}
+  .ktv-btn{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer}
+  .ktv-btn.primary{border-color:#3b82f6}
+  .ktv-btn.danger{border-color:#ef4444;color:#ef4444}
+  /* modal */
+  .ktv-modal-backdrop{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;align-items:center;justify-content:center;z-index:1000}
+  .ktv-modal{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:var(--shadow);width:540px;max-width:92vw;padding:14px}
+  .ktv-modal h4{margin:0 0 8px;font-size:16px;color:var(--text)}
+  .ktv-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .ktv-form .full{grid-column:1/-1}
+  .ktv-form label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .ktv-form input[type="text"], .ktv-form input[type="number"], .ktv-form input[type="date"], .ktv-form textarea, .ktv-form select{width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:13px;background:#fff}
+  .ktv-modal .footer{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+
+  /* show day/week picker only when range=day */
+  #weekDayPicker{display:none}
+  body[data-range="day"] #weekDayPicker{display:flex}
+</style>
+
+<div class="page-wrap">
+  <div class="mb-2">
+    <a href="{% url 'qrqc_dashboard' %}" class="btn btn-light">← Все бренды</a>
+  </div>
+
+  <div class="head">
+    <div class="filters">
+      {% if filters.models %}<span class="chip">Модели: {{ filters.models|join:", " }}</span>{% endif %}
+      {% if filters.posts %}<span class="chip">Посты: {{ filters.posts|join:", " }}</span>{% endif %}
+      {% if filters.grades %}<span class="chip">Грейды: {{ filters.grades|join:", " }}</span>{% endif %}
+      {% if start or end %}<span class="chip">Период: {{ start|default:"…" }} — {{ end|default:"…" }}</span>{% else %}<span class="chip">Неделя от {{ target_date }}</span>{% endif %}
+    </div>
+  </div>
+
+    <div class="grid-main">
+      <!-- Row 1 -->
+      <div class="card weekly-card">
+        <div class="controls">
+          <div style="display:flex;gap:6px;flex-wrap:nowrap;align-items:center">
+            <button id="btnRangeDay" class="btn">По дням</button>
+            <button id="btnRangeWeek" class="btn">По неделям</button>
+            <button id="btnRangeMonth" class="btn">За месяц</button>
+            <button id="btnRangeHalfYear" class="btn">За пол года</button>
+            <button id="btnRangeYear" class="btn">За год</button>
+            <div id="weekDayPicker" class="picker" style="margin-left:6px;">
+              <select id="isoWeekSelect"></select>
+              <select id="isoDaySelect"></select>
+            </div>
+          </div>
+          <div id="aggControls" style="display:none; margin-left:auto; gap:6px;">
+            <!-- shown only for "За ..." режимы, когда уместно -->
+            <button id="btnAggDays" class="btn">Днями</button>
+            <button id="btnAggWeeks" class="btn">Неделями</button>
+            <button id="btnAggMonths" class="btn">Месяцами</button>
+          </div>
+        </div>
+        <div class="card-head">
+          <h3 id="titleWeekly">По неделям</h3>
+          <div style="display:flex; gap:6px; align-items:center; margin-left:auto;">
+            <button id="btnToggleValues" class="switch-view" style="min-width:140px">Скрыть значения</button>
+            <button id="toggle_weekly" class="switch-view" data-target="weekly">Таблица</button>
+          </div>
+        </div>
+        <div id="chart_weekly" class="chart"></div>
+        <div id="table_weekly_wrap" class="hidden">
+          <table id="table_weekly" class="qrtable"></table>
+        </div>
+      </div>
+
+      <div class="card grades-card">
+        <div class="card-head">
+          <h3>По грейдам</h3>
+          <button id="toggle_grades" class="switch-view" data-target="grades">Таблица</button>
+        </div>
+        <div id="chart_grades" class="chart chart-small"></div>
+        <div id="table_grades_wrap" class="hidden">
+          <table id="table_grades" class="qrtable"></table>
+        </div>
+      </div>
+
+      <!-- Row 2 -->
+      <div class="card posts-card">
+        <div class="card-head">
+          <h3>По постам</h3>
+          <button id="toggle_posts" class="switch-view" data-target="posts">Таблица</button>
+        </div>
+        <div id="postsAreas" class="controls" style="flex-wrap:wrap"></div>
+        <div id="chart_posts" class="chart chart-tall"></div>
+        <div id="table_posts_wrap" class="hidden">
+          <table id="table_posts" class="qrtable"></table>
+        </div>
+      </div>
+
+      <div class="card models-card">
+        <div class="card-head">
+          <h3>По моделям</h3>
+          <button id="toggle_models" class="switch-view" data-target="models">Таблица</button>
+        </div>
+        <div id="chart_models" class="chart chart-small"></div>
+        <div id="table_models_wrap" class="hidden">
+          <table id="table_models" class="qrtable"></table>
+        </div>
+      </div>
+
+      <div class="card resp-card">
+        <div class="card-head">
+          <h3>DPU по ответственным</h3>
+          <div style="display:flex; gap:6px; align-items:center; margin-left:auto;">
+            <button id="btnRespActive" class="switch-view active">С данными<span id="cntRespActive"></span></button>
+            <button id="btnRespAll" class="switch-view">Все<span id="cntRespAll"></span></button>
+          </div>
+        </div>
+        <div id="chart_responsibles" class="chart chart-wide"></div>
+      </div>
+    </div>
+
+  <!-- Нижний ряд: 2 таблицы -->
+</div>
+
+  <div class="grid-bottom">
+    <div class="card">
+      <h3>{{ titles.table_top_by_grades }}</h3>
+      <table class="qrtable">
+        <thead>
+          <tr>
+            <th class="num">#</th>
+            <th>Деталь</th>
+            <th>Дефект</th>
+            <th class="count">Кол-во</th>
+            <th>Грейд</th>
+            <th>Ответственный</th>
+            <th>Follow Up</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if table_top_by_grades %}
+            {% for r in table_top_by_grades|slice:":10" %}
+              {% if r.responsibles %}
+                {% for resp, weight in r.responsibles.items %}
+                  <tr>
+                    {% if forloop.first %}
+                      <td class="num" rowspan="{{ r.responsibles|length }}">{{ forloop.parentloop.counter }}</td>
+                      <td rowspan="{{ r.responsibles|length }}">{{ r.detail|default:"—" }}</td>
+                      <td rowspan="{{ r.responsibles|length }}">{{ r.defect|default:"—" }}</td>
+                      <td class="count" rowspan="{{ r.responsibles|length }}">{{ r.count|default:"0" }}</td>
+                      <td rowspan="{{ r.responsibles|length }}">{{ r.grade|default:"—" }}</td>
+                    {% endif %}
+                    <td>{{ resp|default:"(В ожидании назначения)" }}</td>
+                    {% if forloop.first %}
+                      <td rowspan="{{ r.responsibles|length }}">
+                        <div class="d-flex gap-2">
+                          <button type="button"
+                                  class="ktv-btn primary ktv-open"
+                                  data-table-type="by_grades"
+                                  data-detail="{{ r.detail|default:'—' }}"
+                                  data-defect="{{ r.defect|default:'—' }}"
+                                  data-grade="{{ r.grade|default:'' }}"
+                                  data-count="{{ r.count|default:'0' }}">
+                            Follow Up
+                          </button>
+                          {% with ids_csv=r.defect_ids|default:None|join:"," vins_csv=r.vins|default:None|join:"," %}
+                            {% if ids_csv %}
+                              <a href="{% url 'defect_details' %}?defect_id={{ ids_csv|urlencode }}{% if vins_csv %}&amp;vin={{ vins_csv|urlencode }}{% endif %}"
+                                 class="ktv-btn" target="_blank" rel="noopener noreferrer" title="Просмотр деталей">
+                                <i class="bi bi-eye"></i>
+                              </a>
+                            {% else %}
+                              <span class="ktv-btn" title="Нет ID дефектов"><i class="bi bi-eye-slash"></i></span>
+                            {% endif %}
+                          {% endwith %}
+                        </div>
+                      </td>
+                    {% endif %}
+                  </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td class="num"> {{ forloop.counter }} </td>
+                  <td>{{ r.detail|default:"—" }}</td>
+                  <td>{{ r.defect|default:"—" }}</td>
+                  <td class="count">{{ r.count|default:"0" }}</td>
+                  <td>{{ r.grade|default:"—" }}</td>
+                  <td>(В ожидании назначения)</td>
+                  <td>
+                    <div class="d-flex gap-2">
+                      <button type="button"
+                              class="ktv-btn primary ktv-open"
+                              data-table-type="by_grades"
+                              data-detail="{{ r.detail|default:'—' }}"
+                              data-defect="{{ r.defect|default:'—' }}"
+                              data-grade="{{ r.grade|default:'' }}"
+                              data-count="{{ r.count|default:'0' }}">
+                        Follow Up
+                      </button>
+                      {% with ids_csv=r.defect_ids|default:None|join:"," vins_csv=r.vins|default:None|join:"," %}
+                        {% if ids_csv %}
+                          <a href="{% url 'defect_details' %}?defect_id={{ ids_csv|urlencode }}{% if vins_csv %}&amp;vin={{ vins_csv|urlencode }}{% endif %}"
+                             class="ktv-btn" target="_blank" rel="noopener noreferrer" title="Просмотр деталей">
+                            <i class="bi bi-eye"></i>
+                          </a>
+                        {% else %}
+                          <span class="ktv-btn" title="Нет ID дефектов"><i class="bi bi-eye-slash"></i></span>
+                        {% endif %}
+                      {% endwith %}
+                    </div>
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="7" class="muted">Нет данных</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>{{ titles.table_top_by_mass }}</h3>
+      <table class="qrtable">
+        <thead>
+          <tr>
+            <th class="num">#</th>
+            <th>Деталь</th>
+            <th>Дефект</th>
+            <th class="count">Кол-во</th>
+            <th>Грейд</th>
+            <th>Ответственный</th>
+            <th>Follow Up</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if table_top_by_mass %}
+            {% for r in table_top_by_mass|slice:":10" %}
+              {% if r.responsibles %}
+                {% for resp, weight in r.responsibles.items %}
+                  <tr>
+                    {% if forloop.first %}
+                      <td class="num" rowspan="{{ r.responsibles|length }}">{{ forloop.parentloop.counter }}</td>
+                      <td rowspan="{{ r.responsibles|length }}">{{ r.detail|default:"—" }}</td>
+                      <td rowspan="{{ r.responsibles|length }}">{{ r.defect|default:"—" }}</td>
+                      <td class="count" rowspan="{{ r.responsibles|length }}">{{ r.count|default:"0" }}</td>
+                      <td rowspan="{{ r.responsibles|length }}">{{ r.grade|default:"—" }}</td>
+                    {% endif %}
+                    <td>{{ resp|default:"(В ожидании назначения)" }}</td>
+                    {% if forloop.first %}
+                      <td rowspan="{{ r.responsibles|length }}">
+                        <div class="d-flex gap-2">
+                          <button type="button"
+                                  class="ktv-btn primary ktv-open"
+                                  data-table-type="by_mass"
+                                  data-detail="{{ r.detail|default:'—' }}"
+                                  data-defect="{{ r.defect|default:'—' }}"
+                                  data-grade="{{ r.grade|default:'' }}"
+                                  data-count="{{ r.count|default:'0' }}">
+                            Follow Up
+                          </button>
+                          {% with ids_csv=r.defect_ids|default:None|join:"," vins_csv=r.vins|default:None|join:"," %}
+                            {% if ids_csv %}
+                              <a href="{% url 'defect_details' %}?defect_id={{ ids_csv|urlencode }}{% if vins_csv %}&amp;vin={{ vins_csv|urlencode }}{% endif %}"
+                                 class="ktv-btn" target="_blank" rel="noopener noreferrer" title="Просмотр деталей">
+                                <i class="bi bi-eye"></i>
+                              </a>
+                            {% else %}
+                              <span class="ktv-btn" title="Нет ID дефектов"><i class="bi bi-eye-slash"></i></span>
+                            {% endif %}
+                          {% endwith %}
+                        </div>
+                      </td>
+                    {% endif %}
+                  </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td class="num"> {{ forloop.counter }} </td>
+                  <td>{{ r.detail|default:"—" }}</td>
+                  <td>{{ r.defect|default:"—" }}</td>
+                  <td class="count">{{ r.count|default:"0" }}</td>
+                  <td>{{ r.grade|default:"—" }}</td>
+                  <td>(В ожидании назначения)</td>
+                  <td>
+                    <div class="d-flex gap-2">
+                      <button type="button"
+                              class="ktv-btn primary ktv-open"
+                              data-table-type="by_mass"
+                              data-detail="{{ r.detail|default:'—' }}"
+                              data-defect="{{ r.defect|default:'—' }}"
+                              data-grade="{{ r.grade|default:'' }}"
+                              data-count="{{ r.count|default:'0' }}">
+                        Follow Up
+                      </button>
+                      {% with ids_csv=r.defect_ids|default:None|join:"," vins_csv=r.vins|default:None|join:"," %}
+                        {% if ids_csv %}
+                          <a href="{% url 'defect_details' %}?defect_id={{ ids_csv|urlencode }}{% if vins_csv %}&amp;vin={{ vins_csv|urlencode }}{% endif %}"
+                             class="ktv-btn" target="_blank" rel="noopener noreferrer" title="Просмотр деталей">
+                            <i class="bi bi-eye"></i>
+                          </a>
+                        {% else %}
+                          <span class="ktv-btn" title="Нет ID дефектов"><i class="bi bi-eye-slash"></i></span>
+                        {% endif %}
+                      {% endwith %}
+                    </div>
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="7" class="muted">Нет данных</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+<div class="ktv-wrap">
+  {% if ktv_by_grades %}
+  <div class="card ktv-card">
+    <h3>Follow Up List — по грейдам</h3>
+    <table class="qrtable">
+      <thead>
+        <tr>
+          <th>Деталь</th>
+          <th>Дефект</th>
+          <th>Грейд</th>
+          <th class="count">Кол-во</th>
+          <th>Дефект от</th>
+          <th>Показывать с</th>
+          <th>Комментарий</th>
+          <th>Автор</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in ktv_by_grades %}
+        <tr>
+          <td>{{ o.detail }}</td>
+          <td>{{ o.defect }}</td>
+          <td>{{ o.grade|default:'—' }}</td>
+          <td class="count">{{ o.count }}</td>
+          <td>{{ o.created_at|slice:":10" }}</td>
+          <td>{{ o.visible_from }}</td>
+          <td><span class="muted">{{ o.comment|default:'—' }}</span></td>
+          <td>{{ o.created_by|default:'—' }}</td>
+          <td>
+            <div class="ktv-actions">
+              <button type="button" class="ktv-btn ktv-edit" data-id="{{ o.id }}">Изменить</button>
+              <button type="button" class="ktv-btn danger ktv-delete" data-id="{{ o.id }}">Удалить</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if ktv_by_mass %}
+  <div class="card ktv-card" style="margin-top:22px;">
+    <h3>Follow Up List — по массовости</h3>
+    <table class="qrtable">
+      <thead>
+        <tr>
+          <th>Деталь</th>
+          <th>Дефект</th>
+          <th>Грейд</th>
+          <th class="count">Кол-во</th>
+          <th>Дефект от</th>
+          <th>Показывать с</th>
+          <th>Комментарий</th>
+          <th>Автор</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in ktv_by_mass %}
+        <tr>
+          <td>{{ o.detail }}</td>
+          <td>{{ o.defect }}</td>
+          <td>{{ o.grade|default:'—' }}</td>
+          <td class="count">{{ o.count }}</td>
+          <td>{{ o.created_at|slice:":10" }}</td>
+          <td>{{ o.visible_from }}</td>
+          <td><span class="muted">{{ o.comment|default:'—' }}</span></td>
+          <td>{{ o.created_by|default:'—' }}</td>
+          <td>
+            <div class="ktv-actions">
+              <button type="button" class="ktv-btn ktv-edit" data-id="{{ o.id }}">Изменить</button>
+              <button type="button" class="ktv-btn danger ktv-delete" data-id="{{ o.id }}">Удалить</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+</div>
+
+<!-- KTV modal -->
+<div class="ktv-modal-backdrop" id="ktvModal">
+  <div class="ktv-modal">
+    <h4 id="ktvModalTitle">Отложить дефект (KTV)</h4>
+    <form id="ktvForm" class="ktv-form">
+      <input type="hidden" name="id" id="ktv_id" />
+      <div class="full">
+        <label>Таблица</label>
+        <select name="table_type" id="ktv_table_type">
+          <option value="by_grades">По грейдам</option>
+          <option value="by_mass">По массовости</option>
+        </select>
+      </div>
+      <div>
+        <label>Деталь</label>
+        <input type="text" name="detail" id="ktv_detail" required />
+      </div>
+      <div>
+        <label>Дефект</label>
+        <input type="text" name="defect" id="ktv_defect" required />
+      </div>
+      <div>
+        <label>Грейд</label>
+        <input type="text" name="grade" id="ktv_grade" />
+      </div>
+      <div>
+        <label>Кол-во</label>
+        <input type="number" name="count" id="ktv_count" min="0" step="1" />
+      </div>
+      <div>
+        <label>Показывать с</label>
+        <input type="date" name="visible_from" id="ktv_visible_from" required />
+      </div>
+      <div class="full">
+        <label>Комментарий</label>
+        <textarea name="comment" id="ktv_comment" rows="3"></textarea>
+      </div>
+      <div class="footer full">
+        <button type="button" class="ktv-btn" id="ktvCancel">Отмена</button>
+        <button type="submit" class="ktv-btn primary" id="ktvSubmit">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{{ charts|json_script:"charts-json" }}
+{{ dpu_responsibles_active|json_script:"dpu-resp-active" }}
+{{ dpu_responsibles_all|json_script:"dpu-resp-all" }}
+
+<script>
+  // Render only after DOM is ready and ApexCharts from base.html is available
+  document.addEventListener('DOMContentLoaded', function(){
+    const CSS = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+    const COLORS = { bar: CSS('--accent'), dpu: CSS('--line1'), str: CSS('--line2') };
+
+    // ===== ISO weeks/day & URL sync helpers =====
+    function fmtISO(d){ const y=d.getUTCFullYear(); const m=String(d.getUTCMonth()+1).padStart(2,'0'); const day=String(d.getUTCDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+    function fmtDMY(d){ const dd=String(d.getUTCDate()).padStart(2,'0'); const mm=String(d.getUTCMonth()+1).padStart(2,'0'); const yy=d.getUTCFullYear(); return `${dd}.${mm}.${yy}`; }
+    function isTodayUTC(d){ const t=new Date(); const u=new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())); return fmtISO(d)===fmtISO(u); }
+    function startOfISOWeek(d){
+      const t=new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      const wd = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() - (wd-1)); return t;
+    }
+    function endOfISOWeek(d){ const s=startOfISOWeek(d); const e=new Date(s); e.setUTCDate(s.getUTCDate()+6); return e; }
+    function isoWeekKey(d){
+      const x=new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      x.setUTCDate(x.getUTCDate()+4-(x.getUTCDay()||7));
+      const y = x.getUTCFullYear();
+      const y0=new Date(Date.UTC(y,0,1));
+      const week = Math.ceil((((x-y0)/86400000)+1)/7);
+      return `${y}-W${String(week).padStart(2,'0')}`;
+    }
+    function weekLabelFromMonday(monday){
+      const e=endOfISOWeek(monday);
+      const dd = s=>String(s.getUTCDate()).padStart(2,'0');
+      const mm = s=>String(s.getUTCMonth()+1).padStart(2,'0');
+      const w = isoWeekKey(monday).split('W')[1];
+      return `Нед. ${w} · ${dd(monday)}.${mm(monday)}–${dd(e)}.${mm(e)}`;
+    }
+    function buildLastWeeksList(count=16){
+      const today = new Date();
+      const nowUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+      const curMon = startOfISOWeek(nowUTC);
+      const out=[];
+      for(let i=0;i<count;i++){
+        const m = new Date(curMon); m.setUTCDate(curMon.getUTCDate() - i*7);
+        out.push({ key: isoWeekKey(m), monday: m, label: weekLabelFromMonday(m) });
+      }
+      return out; // current, 1w back, 2w back...
+    }
+    function syncPickersToUrl(){
+      const pickerWrap = document.getElementById('weekDayPicker');
+      const selWeek = document.getElementById('isoWeekSelect');
+      const selDay  = document.getElementById('isoDaySelect');
+      if(!pickerWrap || !selWeek || !selDay) return;
+
+      const U = new URL(window.location.href);
+      const dateParam = U.searchParams.get('date');
+      const rangeParam = U.searchParams.get('range') || '';
+
+      // rebuild week options anchored to NOW — fixes "can't go back to current week"
+      const weeks = buildLastWeeksList(16);
+      selWeek.innerHTML = weeks.map(w => `<option value="${w.key}" data-monday="${fmtISO(w.monday)}">${w.label}</option>`).join('');
+
+      let selectedMonday;
+      if(dateParam){
+        const d = new Date(dateParam+'T00:00:00Z'); selectedMonday = startOfISOWeek(d);
+      } else {
+        selectedMonday = startOfISOWeek(new Date());
+      }
+      const selectedKey = isoWeekKey(selectedMonday);
+      if([...selWeek.options].some(o => o.value===selectedKey)){
+        selWeek.value = selectedKey;
+      } else {
+        const opt = document.createElement('option');
+        opt.value = selectedKey; opt.textContent = weekLabelFromMonday(selectedMonday);
+        opt.setAttribute('data-monday', fmtISO(selectedMonday));
+        selWeek.insertBefore(opt, selWeek.firstChild);
+        selWeek.value = selectedKey;
+      }
+
+      // fill day options for selected week
+      function fillDays(mon){
+        selDay.innerHTML = '';
+        const all = document.createElement('option'); all.value='all'; all.textContent='Вся неделя'; selDay.appendChild(all);
+        for(let i=0;i<7;i++){
+          const d = new Date(mon); d.setUTCDate(mon.getUTCDate()+i);
+          const dd = String(d.getUTCDate()).padStart(2,'0');
+          const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+          const wk = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'][i];
+          const opt = document.createElement('option');
+          opt.value = fmtISO(d); opt.textContent = `${wk} ${dd}.${mm}`;
+          selDay.appendChild(opt);
+        }
+      }
+      fillDays(selectedMonday);
+
+      if(dateParam){
+        const d = new Date(dateParam+'T00:00:00Z');
+        if(rangeParam==='day' && fmtISO(d)===fmtISO(selectedMonday)) selDay.value='all';
+        else { selDay.value = dateParam; if(selDay.value!==dateParam) selDay.value='all'; }
+      } else { selDay.value='all'; }
+
+      // reflect current range to CSS
+      document.body.setAttribute('data-range', stateRange);
+    }
+    function attachPickerHandlers(){
+      const selWeek = document.getElementById('isoWeekSelect');
+      const selDay  = document.getElementById('isoDaySelect');
+      if(!selWeek || !selDay) return;
+
+      selWeek.addEventListener('change', ()=>{
+        const mondayISO = selWeek.selectedOptions[0]?.getAttribute('data-monday');
+        if(!mondayISO) return;
+        const u = new URL(window.location.href);
+        u.searchParams.set('range','day');
+        u.searchParams.set('date', mondayISO);
+        u.searchParams.delete('start'); u.searchParams.delete('end');
+        history.pushState(null,'',u.toString());
+        syncPickersToUrl();
+        window.location.href = u.toString();
+      });
+
+      selDay.addEventListener('change', ()=>{
+        const value = selDay.value;
+        const mondayISO = selWeek.selectedOptions[0]?.getAttribute('data-monday');
+        const u = new URL(window.location.href);
+        u.searchParams.delete('start'); u.searchParams.delete('end');
+        if(value==='all'){
+          u.searchParams.set('range','day');
+          if(mondayISO) u.searchParams.set('date', mondayISO);
+        } else {
+          u.searchParams.set('date', value);
+          u.searchParams.delete('range');
+        }
+        history.pushState(null,'',u.toString());
+        syncPickersToUrl();
+        window.location.href = u.toString();
+      });
+
+      window.addEventListener('popstate', ()=>{ syncPickersToUrl(); });
+    }
+
+    // Get payload prepared by the view
+    const chartsEl = document.getElementById('charts-json');
+    const charts = chartsEl ? JSON.parse(chartsEl.textContent) : {};
+    const weeklyModeDefault = '{{ weekly_mode_default|default:"sum" }}';
+    let labelsVisible = true; // управление показом числовых значений на верхнем графике
+
+    const url = new URL(window.location.href);
+    // === default landing: open "По дням" for current week and show today's data ===
+    // If there are no explicit time params (date/range/start/end), set ?date=<today> (no range)
+    (function(){
+      const hasDate  = url.searchParams.get('date');
+      const hasRange = url.searchParams.get('range');
+      const hasStart = url.searchParams.get('start');
+      const hasEnd   = url.searchParams.get('end');
+      if(!hasDate && !hasRange && !hasStart && !hasEnd){
+        const now = new Date();
+        const todayISO = fmtISO(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())));
+        url.searchParams.set('date', todayISO);   // single-day mode (no range)
+        // make sure we don't accidentally keep any stray params
+        url.searchParams.delete('range');
+        url.searchParams.delete('start');
+        url.searchParams.delete('end');
+        // replace to avoid back-button loop
+        window.location.replace(url.toString());
+        return; // stop bootstrapping on the stale DOM
+      }
+    })();
+    // ====== global time range & aggregation ======
+    // range: 'day' | 'week' | 'month' | 'halfyear' | 'year'
+    // agg:   'day' | 'week' | 'month'  (only affects верхний левый график)
+    const rangeParam = url.searchParams.get('range') || '';
+    const aggParam   = url.searchParams.get('agg') || '';
+    const dateOnly   = (!rangeParam && !!url.searchParams.get('date'));
+    const stateRange = (['day','week','month','halfyear','year'].includes(rangeParam)
+                       ? rangeParam
+                       : (dateOnly ? 'day' : 'week'));
+    // reflect current range to CSS
+    document.body.setAttribute('data-range', stateRange);
+    // default aggregation depending on range
+    let stateAgg = (['day','week','month'].includes(aggParam) ? aggParam : null);
+    if (!stateAgg) {
+      if (stateRange === 'day') stateAgg = 'day';
+      else if (stateRange === 'week') stateAgg = 'week';
+      else if (stateRange === 'month') stateAgg = 'week'; // по умолчанию неделями внутри месяца
+      else stateAgg = 'month'; // halfyear/year
+    }
+
+    // === helpers for current period title and dataset for the top-left chart & table
+    // -------- Aggregation helpers (fallbacks when backend doesn't provide a specific granularity) --------
+    function isISODateLabel(s){
+      return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.trim());
+    }
+    function parseISODateSafe(s){
+      // Always parse as UTC to avoid TZ shifting of labels
+      try { return new Date(s + 'T00:00:00Z'); } catch(e){ return null; }
+    }
+    function isoWeekYear(d){
+      // ISO week-year calculation
+      const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      // Thursday in current week decides the year
+      date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+      const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+      const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+      const year = date.getUTCFullYear();
+      return { year, week };
+    }
+    function monthKey(d){
+      const y = d.getUTCFullYear();
+      const m = (d.getUTCMonth()+1).toString().padStart(2,'0');
+      return `${y}-${m}`;
+    }
+    function ensureSeriesShape(r){
+      return r || { labels:[], series:{ unique_vins:[], dpu:[], str:[] } };
+    }
+    function aggregateFromDays(daysDataset, level /* 'week'|'month' */){
+      const src = ensureSeriesShape(daysDataset);
+      const outMap = Object.create(null);
+      (src.labels||[]).forEach((lab, i) => {
+        if(!isISODateLabel(lab)) return; // skip unknown labels
+        const d = parseISODateSafe(lab); if(!d) return;
+        const key = (level === 'week')
+          ? (function(){ const {year, week} = isoWeekYear(d); return `${year}-W${String(week).padStart(2,'0')}`; })()
+          : monthKey(d);
+        if(!outMap[key]) outMap[key] = { vins:0, dpu_w:0, str_w:0 };
+        const vins = Number(src.series.unique_vins?.[i] || 0);
+        const dpu  = Number(src.series.dpu?.[i] || 0);
+        const str  = Number(src.series.str?.[i] || 0);
+        outMap[key].vins  += vins;
+        outMap[key].dpu_w += dpu * vins;   // weighted by vins
+        outMap[key].str_w += str * vins;   // weighted by vins
+      });
+      const labels = Object.keys(outMap).sort((a,b) => a.localeCompare(b));
+      const vins = labels.map(k => outMap[k].vins);
+      const dpu  = labels.map(k => outMap[k].vins ? +(outMap[k].dpu_w / outMap[k].vins).toFixed(2) : 0);
+      const str  = labels.map(k => outMap[k].vins ? +(outMap[k].str_w / outMap[k].vins).toFixed(2) : 0);
+      return { labels, series:{ unique_vins: vins, dpu, str } };
+    }
+    function aggregateWeeksToMonths(weeksDataset){
+      // Try to turn "YYYY-Www" into months using the first day of that ISO week
+      const src = ensureSeriesShape(weeksDataset);
+      const outMap = Object.create(null);
+      (src.labels||[]).forEach((lab, i) => {
+        const m = /^(\d{4})-W(\d{2})$/.exec(String(lab));
+        if(!m) return;
+        const y = +m[1], w = +m[2];
+        // Monday of ISO week
+        const simple = new Date(Date.UTC(y,0,1));
+        const day = simple.getUTCDay() || 7;
+        const mondayOfWeek1 = new Date(simple);
+        mondayOfWeek1.setUTCDate(simple.getUTCDate() + (day > 4 ? 8 - day : 1 - day));
+        const monday = new Date(mondayOfWeek1);
+        monday.setUTCDate(mondayOfWeek1.getUTCDate() + (w-1)*7);
+        const key = monthKey(monday);
+        if(!outMap[key]) outMap[key] = { vins:0, dpu_w:0, str_w:0 };
+        const vins = Number(src.series.unique_vins?.[i] || 0);
+        const dpu  = Number(src.series.dpu?.[i] || 0);
+        const str  = Number(src.series.str?.[i] || 0);
+        outMap[key].vins  += vins;
+        outMap[key].dpu_w += dpu * vins;
+        outMap[key].str_w += str * vins;
+      });
+      const labels = Object.keys(outMap).sort((a,b) => a.localeCompare(b));
+      const vins = labels.map(k => outMap[k].vins);
+      const dpu  = labels.map(k => outMap[k].vins ? +(outMap[k].dpu_w / outMap[k].vins).toFixed(2) : 0);
+      const str  = labels.map(k => outMap[k].vins ? +(outMap[k].str_w / outMap[k].vins).toFixed(2) : 0);
+      return { labels, series:{ unique_vins: vins, dpu, str } };
+    }
+
+    // Parse date from multiple possible label formats
+    function parseAnyDate(s, fallbackYear){
+      if (!s) return null;
+      if (isISODateLabel(s)) return parseISODateSafe(s);
+      // DD.MM or DD.MM.YYYY
+      const m = /^(\d{2})\.(\d{2})(?:\.(\d{4}))?$/.exec(String(s).trim());
+      if (m){
+        const dd = +m[1], mm = +m[2] - 1, yy = m[3] ? +m[3] : (fallbackYear || (new Date()).getUTCFullYear());
+        return new Date(Date.UTC(yy, mm, dd));
+      }
+      return null;
+    }
+    // -------- Aggregation helpers (fallbacks when backend doesn't provide a specific granularity) --------
+    function isISODateLabel(s){
+      return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.trim());
+    }
+    function parseISODateSafe(s){
+      // Always parse as UTC to avoid TZ shifting of labels
+      try { return new Date(s + 'T00:00:00Z'); } catch(e){ return null; }
+    }
+    function isoWeekYear(d){
+      // ISO week-year calculation
+      const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      // Thursday in current week decides the year
+      date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+      const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+      const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+      const year = date.getUTCFullYear();
+      return { year, week };
+    }
+    function monthKey(d){
+      const y = d.getUTCFullYear();
+      const m = (d.getUTCMonth()+1).toString().padStart(2,'0');
+      return `${y}-${m}`;
+    }
+    function ensureSeriesShape(r){
+      return r || { labels:[], series:{ unique_vins:[], dpu:[], str:[] } };
+    }
+    function aggregateFromDays(daysDataset, level /* 'week'|'month' */){
+      const src = ensureSeriesShape(daysDataset);
+      const outMap = Object.create(null);
+      (src.labels||[]).forEach((lab, i) => {
+        if(!isISODateLabel(lab)) return; // skip unknown labels
+        const d = parseISODateSafe(lab); if(!d) return;
+        const key = (level === 'week')
+          ? (function(){ const {year, week} = isoWeekYear(d); return `${year}-W${String(week).padStart(2,'0')}`; })()
+          : monthKey(d);
+        if(!outMap[key]) outMap[key] = { vins:0, dpu_w:0, str_w:0 };
+        const vins = Number(src.series.unique_vins?.[i] || 0);
+        const dpu  = Number(src.series.dpu?.[i] || 0);
+        const str  = Number(src.series.str?.[i] || 0);
+        outMap[key].vins  += vins;
+        outMap[key].dpu_w += dpu * vins;   // weighted by vins
+        outMap[key].str_w += str * vins;   // weighted by vins
+      });
+      const labels = Object.keys(outMap).sort((a,b) => a.localeCompare(b));
+      const vins = labels.map(k => outMap[k].vins);
+      const dpu  = labels.map(k => outMap[k].vins ? +(outMap[k].dpu_w / outMap[k].vins).toFixed(2) : 0);
+      const str  = labels.map(k => outMap[k].vins ? +(outMap[k].str_w / outMap[k].vins).toFixed(2) : 0);
+      return { labels, series:{ unique_vins: vins, dpu, str } };
+    }
+    function aggregateWeeksToMonths(weeksDataset){
+      // Try to turn "YYYY-Www" into months using the first day of that ISO week
+      const src = ensureSeriesShape(weeksDataset);
+      const outMap = Object.create(null);
+      (src.labels||[]).forEach((lab, i) => {
+        const m = /^(\d{4})-W(\d{2})$/.exec(String(lab));
+        if(!m) return;
+        const y = +m[1], w = +m[2];
+        // Monday of ISO week
+        const simple = new Date(Date.UTC(y,0,1));
+        const day = simple.getUTCDay() || 7;
+        const mondayOfWeek1 = new Date(simple);
+        mondayOfWeek1.setUTCDate(simple.getUTCDate() + (day > 4 ? 8 - day : 1 - day));
+        const monday = new Date(mondayOfWeek1);
+        monday.setUTCDate(mondayOfWeek1.getUTCDate() + (w-1)*7);
+        const key = monthKey(monday);
+        if(!outMap[key]) outMap[key] = { vins:0, dpu_w:0, str_w:0 };
+        const vins = Number(src.series.unique_vins?.[i] || 0);
+        const dpu  = Number(src.series.dpu?.[i] || 0);
+        const str  = Number(src.series.str?.[i] || 0);
+        outMap[key].vins  += vins;
+        outMap[key].dpu_w += dpu * vins;
+        outMap[key].str_w += str * vins;
+      });
+      const labels = Object.keys(outMap).sort((a,b) => a.localeCompare(b));
+      const vins = labels.map(k => outMap[k].vins);
+      const dpu  = labels.map(k => outMap[k].vins ? +(outMap[k].dpu_w / outMap[k].vins).toFixed(2) : 0);
+      const str  = labels.map(k => outMap[k].vins ? +(outMap[k].str_w / outMap[k].vins).toFixed(2) : 0);
+      return { labels, series:{ unique_vins: vins, dpu, str } };
+    }
+
+    function aggSuffix(){
+      if(stateAgg==='day') return ' (по дням)';
+      if(stateAgg==='week') return ' (по неделям)';
+      if(stateAgg==='month') return ' (по месяцам)';
+      return '';
+    }
+    function aggSuffix(){
+      if(stateAgg==='day') return ' (по дням)';
+      if(stateAgg==='week') return ' (по неделям)';
+      if(stateAgg==='month') return ' (по месяцам)';
+      return '';
+    }
+    function periodLabel(){
+      const U = new URL(window.location.href);
+      const dateParam = U.searchParams.get('date');
+      const r = stateRange; // current top-range
+
+      // 1) SPECIFIC DAY: when there is `date` and no `range` (we use that for a single day)
+      if (!U.searchParams.get('range') && dateParam){
+        const d = new Date(dateParam + 'T00:00:00Z');
+        let s = fmtDMY(d);
+        if (isTodayUTC(d)) s += ' · Сегодня';
+        return s;
+      }
+
+      // 2) WEEK VIEW IN "ПО ДНЯМ": when `range=day` and `date` is Monday of ISO-week
+      if (r === 'day'){
+        const monday = dateParam ? startOfISOWeek(new Date(dateParam+'T00:00:00Z')) : startOfISOWeek(new Date());
+        const sunday = endOfISOWeek(monday);
+        return `${fmtDMY(monday)}–${fmtDMY(sunday)}`;
+      }
+
+      // 3) Other ranges keep the previous generic hints
+      if (r === 'week') return 'Прошлые 5 недель';
+      if (r === 'month') return 'Последние 30 дней';
+      if (r === 'halfyear') return 'Последние 180 дней';
+      if (r === 'year') return 'Последние 365 дней';
+      return '';
+    }
+    // getTopDataset: returns {title, r} for the top-left chart, with aggregation fallbacks
+    function getTopDataset(){
+      let title = '';
+      let r = { labels:[], series:{unique_vins:[], dpu:[], str:[]} };
+
+      // Small helpers to choose with graceful fallbacks
+      function prefer(obj, keys){ for(const k of keys){ if(obj[k]) return obj[k]; } return null; }
+
+      if(stateRange === 'day'){
+        title = 'По дням';
+        r = charts.current || r; // 7 дней ISO недели
+      } else if (stateRange === 'week'){
+        title = 'По неделям';
+        r = charts.prev5_sum || r; // последние 5 недель
+      } else if (stateRange === 'month'){
+        title = 'Последние 30 дней';
+        if(stateAgg==='day'){
+          r = prefer(charts, ['month_by_days']) || r;
+        } else if(stateAgg==='week'){
+          r = prefer(charts, ['month_by_weeks']) || (prefer(charts, ['month_by_days']) ? aggregateFromDays(charts.month_by_days, 'week') : r);
+        } else { // month
+          r = prefer(charts, ['month_by_months']) || r;
+        }
+      } else if (stateRange === 'halfyear'){
+        title = 'Последние 180 дней';
+        if(stateAgg==='day'){
+          r = prefer(charts, ['halfyear_by_days']) || r;
+        } else if(stateAgg==='week'){
+          r = prefer(charts, ['halfyear_by_weeks']) ||
+              (prefer(charts, ['halfyear_by_days']) ? aggregateFromDays(charts.halfyear_by_days, 'week') : r);
+        } else { // month
+          r = prefer(charts, ['halfyear_by_months']) ||
+              (prefer(charts, ['halfyear_by_weeks']) ? aggregateWeeksToMonths(charts.halfyear_by_weeks) :
+               (prefer(charts, ['halfyear_by_days']) ? aggregateFromDays(charts.halfyear_by_days, 'month') : r));
+        }
+      } else if (stateRange === 'year'){
+        title = 'Последние 365 дней';
+        if(stateAgg==='day'){
+          r = prefer(charts, ['year_by_days']) || r;
+        } else if(stateAgg==='week'){
+          r = prefer(charts, ['year_by_weeks']) ||
+              (prefer(charts, ['year_by_days']) ? aggregateFromDays(charts.year_by_days, 'week') : r);
+        } else { // month
+          r = prefer(charts, ['year_by_months']) ||
+              (prefer(charts, ['year_by_weeks']) ? aggregateWeeksToMonths(charts.year_by_weeks) :
+               (prefer(charts, ['year_by_days']) ? aggregateFromDays(charts.year_by_days, 'month') : r));
+        }
+      }
+      return { title, r };
+    }
+
+    // ====== global filter state synced with URL ======
+    const getParamList = (k)=>{
+      const rawMany = url.searchParams.getAll(k);
+      if (rawMany && rawMany.length){
+        return rawMany
+          .flatMap(v => String(v).split(',').map(s => s.trim()))
+          .filter(Boolean);
+      }
+      const one = url.searchParams.get(k);
+      return one ? one.split(',').map(s=>s.trim()).filter(Boolean) : [];
+    };
+    const setParamList = (k, arr)=>{ url.searchParams.delete(k); if(arr && arr.length){ url.searchParams.set(k, arr.join(',')); } };
+    const state = {
+      scope: url.searchParams.get('scope') || 'weeks', // 'weeks' | 'day'
+      grades: getParamList('grades'),
+      models: getParamList('models'),
+      posts:  getParamList('posts'),
+      days:   getParamList('days'),   // selected day labels (when scope=day)
+      weeks:  getParamList('weeks'),   // selected week labels (when scope=weeks)
+      areas:  getParamList('areas')
+    };
+
+    // Canonicalize grade values so URLs always use V1+/V1/V2/V3 (never "1" etc.)
+    function gradeToCanonical(g){
+      const s = String(g).trim().toUpperCase();
+      if (s === '1+' || s === 'V1+' || s === 'V1 +') return 'V1+';
+      if (s === '1'  || s === 'V1')               return 'V1';
+      if (s === '2'  || s === 'V2')               return 'V2';
+      if (s === '3'  || s === 'V3')               return 'V3';
+      return s;
+    }
+    // Map display label -> URL param value (special: V1+ should go as V1)
+    function gradeToParam(g){
+      const s = gradeToCanonical(g);
+      if (s === 'V1+') return 'V1';
+      return s;
+    }
+    // Normalize any incoming grades from URL (e.g., "1" -> "V1")
+    state.grades = (state.grades || []).map(gradeToCanonical);
+
+    function applyAndReload(){
+      url.searchParams.set('scope', state.scope);
+      url.searchParams.set('range', stateRange);
+      url.searchParams.set('agg', stateAgg);
+      setParamList('grades', (state.grades || []).map(gradeToParam));
+      setParamList('models', state.models);
+      setParamList('posts',  state.posts);
+      setParamList('days',   state.days);
+      setParamList('weeks',  state.weeks);
+      setParamList('areas',  state.areas);
+      window.location.href = url.toString();
+    }
+    // toggle helpers
+    const toggleIn = (arr, val)=>{ const i = arr.indexOf(val); if(i===-1) arr.push(val); else arr.splice(i,1); };
+
+    // Wait until ApexCharts (included in base.html) is ready
+    function whenApexReady(cb){
+      if (window.ApexCharts) return cb();
+      const id = setInterval(()=>{ if (window.ApexCharts){ clearInterval(id); cb(); } }, 40);
+      // hard stop after 5s to avoid infinite loop in case of problems
+      setTimeout(()=>clearInterval(id), 5000);
+    }
+
+    // ====== table helpers ======
+    function renderSimpleTable(el, header, rows){
+      if(!el) return;
+      let thead = '<thead><tr>' + header.map(h=>`<th>${h}</th>`).join('') + '</tr></thead>';
+      let tbody = '<tbody>' + rows.map(r=>'<tr>'+r.map(c=>`<td>${c}</td>`).join('')+'</tr>').join('') + '</tbody>';
+      el.innerHTML = thead + tbody;
+    }
+
+    function showAs(target, mode){ // mode: 'chart' | 'table'
+      const map = {
+        weekly: {chart:'#chart_weekly', table:'#table_weekly_wrap', btn:'#toggle_weekly'},
+        grades: {chart:'#chart_grades', table:'#table_grades_wrap', btn:'#toggle_grades'},
+        posts:  {chart:'#chart_posts',  table:'#table_posts_wrap',  btn:'#toggle_posts'},
+        models: {chart:'#chart_models', table:'#table_models_wrap', btn:'#toggle_models'},
+      };
+      const ids = map[target]; if(!ids) return;
+      const ch = document.querySelector(ids.chart);
+      const tw = document.querySelector(ids.table);
+      const btn = document.querySelector(ids.btn);
+      if(mode==='table'){
+        ch.classList.add('hidden');
+        tw.classList.remove('hidden');
+        btn.classList.add('active');
+        btn.textContent = 'График';
+      } else {
+        ch.classList.remove('hidden');
+        tw.classList.add('hidden');
+        btn.classList.remove('active');
+        btn.textContent = 'Таблица';
+      }
+    }
+
+    // ====== chart options (identical styling with the main dashboard)
+    function comboOptions(title, labels, seriesVINs, seriesDPU, seriesSTR, opts={}){
+      const maxVIN = Math.max(1, ...seriesVINs), maxDPU = Math.max(1, ...seriesDPU);
+      const prevEvents = (opts.events || {});
+      const prevMounted = prevEvents.mounted;
+      const mergedEvents = Object.assign({}, prevEvents, {
+        mounted: function(chartCtx, config){
+          if (typeof prevMounted === 'function') { try { prevMounted(chartCtx, config); } catch(e){} }
+          if (Array.isArray(opts.hideSeries)) { try { opts.hideSeries.forEach(n => chartCtx.hideSeries(n)); } catch(e){} }
+        }
+      });
+      const onSelect = opts.onSelectCategory; // optional callback(name)
+      return {
+        chart:{
+          type:'line',
+          height:290,
+          toolbar:{ show:true, tools:{ download:true, selection:false, zoom:false, zoomin:false, zoomout:false, pan:false, reset:false } },
+          zoom:{ enabled:false },
+          foreColor:CSS('--text'),
+          fontFamily:'Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial',
+          events: {
+            ...mergedEvents,
+            dataPointSelection: function(event, chartCtx, config){
+              if (typeof onSelect === 'function'){
+                const cat = (config.w && config.w.globals && config.w.globals.labels) ? config.w.globals.labels[config.dataPointIndex] : undefined;
+                if(cat) onSelect(cat);
+              }
+            }
+          }
+        },
+        grid:{ show:false },
+        title:{ text:'', style:{fontSize:'12px',color:CSS('--muted'),fontWeight:700}},
+        xaxis:{
+          categories:labels,
+          tickPlacement:'on',
+          axisTicks:{show:true},
+          labels:{
+            rotate: (opts.xRotate || 0),
+            rotateAlways: !!opts.xRotate,
+            hideOverlapping:false,
+            trim:false,
+            formatter: (opts.xLabelFormatter ? opts.xLabelFormatter : undefined),
+            style:{
+              fontSize:'11px',
+              colors: (opts.xLabelColors ? opts.xLabelColors : undefined)
+            }
+          }
+        },
+        yaxis:[ {show:false, min:0, max:Math.ceil(maxVIN*1.1)}, {show:false, min:0, max:Math.ceil(maxDPU*1.1)}, {show:false, min:0, max:100} ],
+        legend:{ position:'top', horizontalAlign:'left', markers:{ radius:12 } },
+        tooltip:{ shared:true, intersect:false, custom: function({series, dataPointIndex, w}){
+          const label = (w.globals.labels && w.globals.labels[dataPointIndex]) || '';
+          const hidden = new Set([...(w.globals.collapsedSeriesIndices||[]), ...(w.globals.hiddenSeriesIndices||[])]);
+          const names = w.globals.seriesNames; const colors = w.globals.colors; let rows = '';
+          names.forEach((nm, i)=>{ if(hidden.has(i)) return; let val = series[i][dataPointIndex]; if(i===0) val=Math.round(val); else if(i===1) val=Number(val).toFixed(2); else if(i===2) val=`${Number(val).toFixed(2)} %`; rows += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;"><span style="width:8px;height:8px;border-radius:50%;background:${colors[i]};display:inline-block"></span><span>${nm}:</span><b>${val}</b></div>`; });
+          return `<div class="apex-tooltip" style="padding:10px 12px;"><div style="font-weight:700;margin-bottom:6px;">${label}</div>${rows}</div>`;
+        }},
+        stroke:{ width:[3,0,3], curve:'smooth' },
+        dataLabels:{ enabled: (opts.dataLabelsEnabled !== undefined ? opts.dataLabelsEnabled : true), enabledOnSeries:[0,1,2], offsetY:-6, style:{fontSize:'11px',fontWeight:600}, formatter:(val,opts)=>{ const i=opts.seriesIndex; if(i===0) return Math.round(val); if(i===1) return Number(val).toFixed(2); if(i===2) return `${(+val).toFixed(2).replace(/\.00$/, '')} %`; return val; } },
+        series:[ {name:'Проверено', type:'line', data:seriesVINs, yAxisIndex:0}, {name:'DPU', type:'column', data:seriesDPU, yAxisIndex:1}, {name:'STR', type:'line', data:seriesSTR, yAxisIndex:2} ],
+        colors:[COLORS.bar, COLORS.dpu, COLORS.str],
+        markers:{ size:3 },
+        plotOptions:{ bar:{ columnWidth:'55%', borderRadius:8, dataLabels:{ position:'top' }, fill:{ opacity:0.9 } } },
+        fill:{ opacity:1 },
+        annotations: {
+          xaxis: [
+            ...(opts.todayCategory ? [{
+              x: opts.todayCategory,
+              borderColor: CSS('--accent'),
+              label: {
+                borderColor: CSS('--accent'),
+                style: { color: CSS('--accent'), background: '#eff6ff', fontWeight: 700 },
+                text: 'Сегодня'
+              }
+            }] : []),
+            ...(opts.selectedBand ? [{
+              x: opts.selectedBand.x,
+              x2: opts.selectedBand.x2,
+              borderColor: CSS('--danger'),
+              strokeDashArray: 0,
+              borderWidth: 3,
+              opacity: 0.25,
+              fillColor: 'rgba(239,68,68,0.18)'
+            }] : [])
+          ],
+          points: [
+            ...(opts.selectedLabel ? [{
+              x: opts.selectedLabel.x,
+              y: opts.selectedLabel.y,
+              marker: { size: 0 },
+              label: {
+                text: '■',
+                offsetY: -10,
+                style: { fontSize: '18px', color: CSS('--danger'), background: 'transparent', fontWeight: 800 }
+              }
+            }] : [])
+          ]
+        },
+        ...opts
+      };
+    }
+
+    function barOptions(title, labels, values, onSelectCategory){
+      return {
+        chart:{
+          type:'bar',
+          height:220,
+          toolbar:{ show:true, tools:{ download:true, selection:false, zoom:false, zoomin:false, zoomout:false, pan:false, reset:false } },
+          zoom:{ enabled:false },
+          foreColor:CSS('--text'),
+          fontFamily:'Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial',
+          events:{
+            dataPointSelection: function(event, chartCtx, config){
+              if(typeof onSelectCategory === 'function'){
+                const cat = (config.w && config.w.globals && config.w.globals.labels) ? config.w.globals.labels[config.dataPointIndex] : undefined;
+                if(cat) onSelectCategory(gradeToCanonical(cat));
+              }
+            }
+          },
+        },
+        grid:{ show:false },
+        title:{ text:'', style:{fontSize:'12px',color:CSS('--muted'),fontWeight:700}},
+        xaxis:{ categories:labels, tickPlacement:'on', labels:{ rotate:0, hideOverlapping:false, trim:false } },
+        yaxis:[{ show:false }], legend:{ show:false }, tooltip:{ shared:true, intersect:false },
+        series:[{ name:title, data:values }],
+        colors:[COLORS.bar],
+        dataLabels: {
+          enabled: true,
+          offsetY: -25,
+          style: { fontSize: '14px', fontWeight: 700, colors: ['#000'] },
+          position: 'top'
+        },
+        plotOptions:{ bar:{ borderRadius:8, columnWidth:'55%', dataLabels:{ position:'top' } } },
+        fill:{ opacity:1 }
+      };
+    }
+
+    // === POSTS -> AREAS mapping (with aliases for spelling variants) ===
+    const POST_LABEL_ALIASES = {
+      'Пост момента затяжек':'Момент затяжек',
+      'Функцонал':'Функционал',
+      'Герметичность кузоав':'Герметичность кузова',
+    };
+    const POST_AREA_MAPPING = {
+      'Пост момента затяжек':'Текущий контроль',
+      'Момент затяжек':'Текущий контроль',
+      'Chassis':'Текущий контроль',
+      'Финал текущий контроль':'Текущий контроль',
+
+      'Зазоры и перепады':'Первая инспекция',
+      'Экстерьер':'Первая инспекция',
+      'Интерьер':'Первая инспекция',
+      'Багажник':'Первая инспекция',
+      'Мотор':'Первая инспекция',
+      'Функцонал':'Первая инспекция',
+      'Функционал':'Первая инспекция',
+
+      'Геометрия колес':'Тестовая линия',
+      'Регулировка света фар и калибровка руля':'Тестовая линия',
+      'Тормозная система':'Тестовая линия',
+      'Underbody':'Тестовая линия',
+      'ADAS':'Тестовая линия',
+      'AVM':'Тестовая линия',
+      'Герметичность кузова':'Тестовая линия',
+
+      'Диагностика':'Финал + Тест трек',
+      'Тест трек':'Финал + Тест трек',
+      'Документация':'Финал + Тест трек',
+    };
+    const AREAS_ORDER = ['Текущий контроль','Первая инспекция','Тестовая линия','Финал + Тест трек'];
+    const postArea = (label) => {
+      const key = POST_LABEL_ALIASES[label] || label;
+      return POST_AREA_MAPPING[key] || '—';
+    };
+
+    // ====== FIXED ORDERS & NORMALIZATION ======
+    const POSTS_ORDER = [
+      'Пост момента затяжек','Chassis','Финал текущий контроль','Зазоры и перепады','Экстерьер','Интерьер','Багажник','Мотор','Функцонал','Геометрия колес','Регулировка света фар и калибровка руля','Тормозная система','Underbody','ADAS','AVM','Герметичность кузова','Диагностика','Тест трек','Документация'
+    ];
+
+    const GRADES_ORDER = ['V1+','V1','V2'];
+
+    // Model orders per brand (display order)
+    const MODELS_ORDER = {
+      chery: ['Tiggo 2','Tiggo 4','Tiggo 7','C8','Tiggo 8','Tiggo 9','Arrizo 6','Arrizo 8'],
+      gwm: ['Jolion','T300','T500','M6','H5','H6 FL','H6 GT','H9','Dargo'],
+      changan: null // keep as is
+    };
+
+    // Map source label -> display label (only where needed)
+    const MODEL_ALIAS_SRC_TO_DISPLAY = {
+      chery: { 'Tiggo 2 PRO': 'Tiggo 2' }
+    };
+
+    function orderPosts(rows){
+      const idx = Object.create(null);
+      (rows.labels||[]).forEach((lab,i)=>{ idx[lab] = i; });
+      const make = key => POSTS_ORDER.map(l=> (idx[l]!==undefined ? rows.series[key][idx[l]] : 0));
+      return { labels: POSTS_ORDER.slice(), series: { unique_vins: make('unique_vins'), dpu: make('dpu'), str: make('str') } };
+    }
+
+    function filterPostsByAreas(rows, selectedAreas){
+      if(!selectedAreas || !selectedAreas.length) return rows; // no filter
+      const keepIdx = [];
+      (rows.labels || []).forEach((lab, i) => {
+        if(selectedAreas.includes(postArea(lab))) keepIdx.push(i);
+      });
+      const pick = (arr) => keepIdx.map(i => Number(arr?.[i] || 0));
+      return {
+        labels: keepIdx.map(i => rows.labels[i]),
+        series: {
+          unique_vins: pick(rows.series.unique_vins),
+          dpu: pick(rows.series.dpu),
+          str: pick(rows.series.str),
+        }
+      };
+    }
+
+    function orderGrades(rows){
+      const idx = Object.create(null);
+      (rows.labels||[]).forEach((lab,i)=>{ idx[lab] = i; });
+      const vals = GRADES_ORDER.map(l=> (idx[l]!==undefined ? rows.series.defects[idx[l]] : 0));
+      return { labels: GRADES_ORDER.slice(), series: { defects: vals } };
+    }
+
+    function orderModels(rows){
+      const brand = ('{{ brand|default:"" }}' || '').trim().toLowerCase();
+      const order = MODELS_ORDER[brand];
+      if (!order) return rows; // keep original for changan or unknown
+
+      // Collapse source labels using alias -> display, aggregating values if needed
+      const alias = (MODEL_ALIAS_SRC_TO_DISPLAY[brand]||{});
+      const agg = Object.create(null);
+      const zero = ()=>({ unique_vins:0, dpu:0, str:0 });
+      (rows.labels||[]).forEach((lab, i)=>{
+        const disp = alias[lab] || lab;
+        if (!agg[disp]) agg[disp] = zero();
+        agg[disp].unique_vins += Number(rows.series.unique_vins?.[i]||0);
+        agg[disp].dpu += Number(rows.series.dpu?.[i]||0);
+        agg[disp].str += Number(rows.series.str?.[i]||0);
+      });
+      const mk = k => order.map(l => (agg[l] ? agg[l][k] : 0));
+      return { labels: order.slice(), series: { unique_vins: mk('unique_vins'), dpu: mk('dpu'), str: mk('str') } };
+    }
+
+    // ====== TABLE RENDERERS ======
+    function buildWeeklyTable(){
+      const wrap = document.getElementById('table_weekly'); if(!wrap) return;
+      const { r } = getTopDataset();
+      const labels = r.labels || [];
+      const s = r.series || {unique_vins:[], dpu:[], str:[]};
+      const rows = labels.map((l,i)=>[
+        l,
+        Math.round(+s.unique_vins[i]||0),
+        (+s.dpu[i]||0).toFixed(2),
+        (+s.str[i]||0).toFixed(2)+' %'
+      ]);
+      renderSimpleTable(wrap, ['Период','Проверено','DPU','STR'], rows);
+    }
+
+    function buildGradesTable(){
+      const el = document.getElementById('table_grades'); if(!el) return;
+      const raw = charts.by_grades||{labels:[], series:{defects:[]}};
+      const r = orderGrades(raw);
+      const rows = r.labels.map((l,i)=>[l, r.series.defects[i]||0]);
+      renderSimpleTable(el, ['Грейд','Дефектов'], rows);
+    }
+
+    function buildPostsTable(){
+      const el = document.getElementById('table_posts'); if(!el) return;
+      const raw = charts.by_posts||{labels:[], series:{unique_vins:[], dpu:[], str:[]}};
+      let r = orderPosts(raw);
+      r = filterPostsByAreas(r, state.areas);
+      const rows = r.labels.map((l,i)=>[l, Math.round(+r.series.unique_vins[i]||0), (+r.series.dpu[i]||0).toFixed(2), (+r.series.str[i]||0).toFixed(2)+' %']);
+      renderSimpleTable(el, ['Пост','Проверено','DPU','STR'], rows);
+    }
+
+    function buildModelsTable(){
+      const el = document.getElementById('table_models'); if(!el) return;
+      const raw = charts.by_models||{labels:[], series:{unique_vins:[], dpu:[], str:[]}};
+      const r = orderModels(raw);
+      const rows = r.labels.map((l,i)=>[l, Math.round(+r.series.unique_vins[i]||0), (+r.series.dpu[i]||0).toFixed(2), (+r.series.str[i]||0).toFixed(2)+' %']);
+      renderSimpleTable(el, ['Модель','Проверено','DPU','STR'], rows);
+    }
+
+    // ====== TOP-LEFT CHART: RANGE + AGGREGATION ======
+    const titleWeekly = document.getElementById('titleWeekly');
+    const elWeekly = document.getElementById('chart_weekly');
+    let weeklyChart = null;
+    function renderTopChart(){
+      if(weeklyChart){ try{weeklyChart.destroy();}catch(e){} }
+      const { title, r } = getTopDataset();
+      const titleNode = document.getElementById('titleWeekly');
+      // Render title with small period hint
+      const extra = periodLabel();
+      titleNode.textContent = extra ? `${title} · ${extra}` : title;
+
+      const btnVals = document.getElementById('btnToggleValues');
+      if(btnVals){ btnVals.textContent = labelsVisible ? 'Скрыть значения' : 'Показать значения'; }
+      // --- Patch: add per-label formatting and coloring for 'day' range ---
+      let labelsForChart = r.labels;
+      let labelColors = undefined;
+      let todayCategory = undefined;
+      let labelFormatter = undefined;
+      let todayIdx = undefined;
+      // Patch: selected day band and label
+      let selectedBand = undefined;
+      let selectedLabel = undefined;
+      if (stateRange === 'day') {
+        const now = new Date();
+        const todayUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+        const todayISO = fmtISO(todayUTC);
+        const shortW = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+
+        // try to infer a base year from URL ?date= (so DD.MM labels parse correctly across year edges)
+        const U = new URL(window.location.href);
+        const baseDate = U.searchParams.get('date') ? new Date(U.searchParams.get('date') + 'T00:00:00Z') : todayUTC;
+        const baseYear = baseDate.getUTCFullYear();
+
+        todayIdx = (r.labels || []).findIndex(s => {
+          // r.labels may already be DD.MM; compare by real date
+          const d = parseAnyDate(s, baseYear);
+          return d ? fmtISO(d) === todayISO : false;
+        });
+
+        labelsForChart = (r.labels || []).map(s=>{
+          const d = parseAnyDate(s, baseYear);
+          if (!d) return String(s); // keep as-is if cannot parse
+          const dd = String(d.getUTCDate()).padStart(2,'0');
+          const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+          const wk = shortW[(d.getUTCDay()||7)-1];
+          return `${dd}.${mm}\n${wk}`;
+        });
+
+        todayCategory = (todayIdx !== -1) ? (r.labels[todayIdx]) : undefined;
+        labelColors   = (r.labels || []).map((_,i)=> i===todayIdx ? CSS('--accent') : CSS('--muted'));
+        labelFormatter = (val)=> val; // keep newlines
+
+        // If user selected a concrete day (URL has ?date and no ?range), draw a red band around that column and a red square label
+        let selectedBand = undefined;
+        let selectedLabel = undefined;
+        if (dateOnly) {
+          const U2 = new URL(window.location.href);
+          const selectedISO = U2.searchParams.get('date');
+          if (selectedISO) {
+            // find the index of selected day among labels
+            const selIdx = (r.labels || []).findIndex(s => {
+              const d = parseAnyDate(s, baseYear);
+              return d ? fmtISO(d) === selectedISO : false;
+            });
+            if (selIdx !== -1) {
+              const x = labelsForChart[selIdx];
+              const x2 = labelsForChart[selIdx + 1] || labelsForChart[selIdx];
+              selectedBand = { x, x2 };
+              // red square above the selected day label (use VIN axis max for safe placement)
+              const maxVIN = Math.max(1, ...(r.series?.unique_vins || [1]));
+              selectedLabel = { x, y: maxVIN * 1.05 };
+            }
+          }
+        }
+        // Expose to outer scope for chart options
+        // (these let shadow outer variables)
+        // Set at the end of this block
+        // (just to clarify, but really these are already let in this block)
+      }
+      weeklyChart = new ApexCharts(elWeekly, comboOptions(title, labelsForChart, r.series.unique_vins, r.series.dpu, r.series.str, {
+        hideSeries:['STR'],
+        dataLabelsEnabled: labelsVisible,
+        onSelectCategory: function(cat){
+          if(stateRange==='day'){ toggleIn(state.days, cat); applyAndReload(); }
+          else if(stateRange==='week'){ toggleIn(state.weeks, cat); applyAndReload(); }
+        },
+        xLabelColors: labelColors,
+        xLabelFormatter: labelFormatter,
+        todayCategory: todayCategory,
+        selectedBand: selectedBand,
+        selectedLabel: selectedLabel
+      }));
+      weeklyChart.render().then(()=>{
+        if (stateRange === 'day'){
+          try{
+            const labelsNodes = document.querySelectorAll('#chart_weekly .apexcharts-xaxis-texts-g text');
+            // Determine today's formatted label as it appears on axis
+            let todayFormatted = undefined;
+            if (Array.isArray(labelsForChart) && typeof todayIdx === 'number' && todayIdx > -1){
+              todayFormatted = labelsForChart[todayIdx];
+            }
+            labelsNodes.forEach(n=>{
+              if (todayFormatted && n.textContent === todayFormatted){
+                n.style.fontWeight = '700';
+                n.style.fill = CSS('--accent');
+              }
+            });
+          }catch(e){}
+        }
+      });
+    }
+
+    function boot(){
+      // POSTS (fixed order + zeros for missing)
+      (function(){
+        const raw = charts.by_posts || {labels:[], series:{unique_vins:[], dpu:[], str:[]}};
+        let r = orderPosts(raw);
+        r = filterPostsByAreas(r, state.areas);
+        // render area chips including "select all"
+        (function(){
+          const holder = document.getElementById('postsAreas');
+          if(!holder) return;
+          holder.innerHTML = '';
+
+          // helper to create a pill button
+          function addPill(text, isActive, onClick){
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pill' + (isActive ? ' active' : '');
+            b.textContent = text;
+            b.addEventListener('click', onClick);
+            holder.appendChild(b);
+          }
+
+          const allMode = !state.areas || state.areas.length === 0; // no filter => "all selected"
+
+          // "Select all" pill
+          addPill('Все участки', allMode, ()=>{
+            state.areas = []; // clear filter -> show all
+            applyAndReload();
+          });
+
+          // Area pills
+          AREAS_ORDER.forEach(area => {
+            const active = !allMode && state.areas.includes(area);
+            addPill(area, active, ()=>{
+              // if we were in ALL mode, start a new selection from this area
+              if(!state.areas || state.areas.length === 0){
+                state.areas = [area];
+              } else {
+                const i = state.areas.indexOf(area);
+                if(i === -1) state.areas.push(area); else state.areas.splice(i,1);
+              }
+              applyAndReload();
+            });
+          });
+        })();
+        const opts = comboOptions('По постам', r.labels, r.series.unique_vins, r.series.dpu, r.series.str, {
+          hideSeries:['STR'], xRotate:-90,
+          onSelectCategory: function(cat){ toggleIn(state.posts, cat); applyAndReload(); }
+        });
+        new ApexCharts(document.getElementById('chart_posts'), opts).render();
+      })();
+
+      // GRADES (V1+ -> V1 -> V2 -> V3)
+      (function(){
+        const raw = charts.by_grades || {labels:[], series:{defects:[]}};
+        const r = orderGrades(raw);
+        const opts = barOptions('По грейдам', r.labels, r.series.defects, function(cat){
+          const canon = gradeToCanonical(cat);
+          toggleIn(state.grades, canon); // second click removes
+          applyAndReload();              // URL will use gradeToParam (V1+ -> V1)
+        });
+        new ApexCharts(document.getElementById('chart_grades'), opts).render();
+      })();
+
+      // MODELS (brand-specific order + aliasing)
+      (function(){
+        const raw = charts.by_models || {labels:[], series:{unique_vins:[], dpu:[], str:[]}};
+        const r = orderModels(raw);
+        const opts = comboOptions('По моделям', r.labels, r.series.unique_vins, r.series.dpu, r.series.str, {
+          hideSeries:['STR'], xRotate:-90,
+          onSelectCategory: function(cat){ toggleIn(state.models, cat); applyAndReload(); }
+        });
+        new ApexCharts(document.getElementById('chart_models'), opts).render();
+      })();
+
+      // RESPONSIBLES (DPU by responsible) — full width
+      (function(){
+        // read datasets
+        const elA = document.getElementById('dpu-resp-active');
+        const elB = document.getElementById('dpu-resp-all');
+        const dsActive = elA ? JSON.parse(elA.textContent) : {labels:[], series:{dpu:[]}};
+        const dsAll    = elB ? JSON.parse(elB.textContent) : {labels:[], series:{dpu:[]}};
+        const holder = document.getElementById('chart_responsibles');
+        if(!holder) return;
+
+        // simple render helper using barOptions but with custom height
+        let current = 'active';
+        let chartResp = null;
+        function render(dataset){
+          // reorder: ALL first, (В ожидании назначения) last
+          const labels = dataset.labels.slice();
+          const values = dataset.series.dpu.slice();
+          const zipped = labels.map((lab,i)=>({lab,val:values[i]}));
+          const others = zipped.filter(x=>x.lab!=='ALL' && x.lab!=='(В ожидании назначения)');
+          const allItem = zipped.find(x=>x.lab==='ALL');
+          const noneItem = zipped.find(x=>x.lab==='(В ожидании назначения)');
+          const reordered = [
+            ...(allItem ? [allItem] : []),
+            ...others,
+            ...(noneItem ? [noneItem] : [])
+          ];
+          const labelsOrdered = reordered.map(x=>x.lab);
+          const valuesOrdered = reordered.map(x=>x.val);
+          if(chartResp){ try{ chartResp.destroy(); }catch(e){} }
+          const opts = barOptions('DPU по ответственным', labelsOrdered, valuesOrdered);
+          opts.chart.height = 340; // a bit taller
+          opts.colors = [CSS('--line1')]; // orange for DPU
+          opts.dataLabels.formatter = (val)=> Number(val).toFixed(2); // round to 2 decimals
+          // nicer label rotation for long names
+          opts.xaxis.labels.rotate = -45;
+          opts.plotOptions.bar.columnWidth = '45%';
+          chartResp = new ApexCharts(holder, opts);
+          chartResp.render();
+        }
+
+        // initial render: active
+        render(dsActive);
+
+        // toggle buttons
+        const btnActive = document.getElementById('btnRespActive');
+        const btnAll    = document.getElementById('btnRespAll');
+        function setBtns(activeIsOn){
+          if(btnActive){ btnActive.classList.toggle('active', activeIsOn); }
+          if(btnAll){ btnAll.classList.toggle('active', !activeIsOn); }
+        }
+        if(btnActive) btnActive.addEventListener('click', ()=>{
+          if(current==='active') return;
+          current='active'; setBtns(true); render(dsActive);
+        });
+        if(btnAll) btnAll.addEventListener('click', ()=>{
+          if(current==='all') return;
+          current='all'; setBtns(false); render(dsAll);
+        });
+      })();
+
+      // add small period labels into card headers for context
+      (function(){
+        const extra = periodLabel();
+        function addBadge(sel){
+          const h = document.querySelector(sel);
+          if(!h) return;
+          // if already added, skip
+          if(h.querySelector('.period-badge')) return;
+          const span = document.createElement('span');
+          span.className = 'period-badge';
+          span.style.cssText = 'margin-left:8px;color:var(--muted);font-weight:600;font-size:12px;opacity:.9';
+          span.textContent = extra ? `· ${extra}` : '';
+          h.appendChild(span);
+        }
+        addBadge('.grades-card .card-head h3');
+        addBadge('.posts-card .card-head h3');
+        addBadge('.models-card .card-head h3');
+      })();
+
+      // ===== Range buttons (affect ALL charts via reload) =====
+      const btnRangeDay      = document.getElementById('btnRangeDay');
+      const btnRangeWeek     = document.getElementById('btnRangeWeek');
+      const btnRangeMonth    = document.getElementById('btnRangeMonth');
+      const btnRangeHalfYear = document.getElementById('btnRangeHalfYear');
+      const btnRangeYear     = document.getElementById('btnRangeYear');
+
+      function setActiveRange(){
+        [btnRangeDay,btnRangeWeek,btnRangeMonth,btnRangeHalfYear,btnRangeYear].forEach(b=>b && b.classList.remove('active'));
+        const map={day:btnRangeDay,week:btnRangeWeek,month:btnRangeMonth,halfyear:btnRangeHalfYear,year:btnRangeYear};
+        const btn = map[stateRange]; if(btn) btn.classList.add('active');
+        // show/hide aggregation sub-controls for top-left chart
+        const aggBox = document.getElementById('aggControls');
+        if(!aggBox) return;
+        if (stateRange === 'month'){
+          aggBox.style.display = 'flex';
+          // enable only days/weeks for month
+          toggleAggButtons({days:true,weeks:true,months:false});
+        } else if (stateRange === 'halfyear' || stateRange === 'year'){
+          aggBox.style.display = 'flex';
+          // allow days, weeks, and months for long ranges
+          toggleAggButtons({days:true,weeks:true,months:true});
+        } else {
+          aggBox.style.display = 'none';
+        }
+        setActiveAgg();
+        syncPickersToUrl();
+        document.body.setAttribute('data-range', stateRange);
+      }
+
+      function toggleAggButtons(flags){
+        const bD=document.getElementById('btnAggDays');
+        const bW=document.getElementById('btnAggWeeks');
+        const bM=document.getElementById('btnAggMonths');
+        if(bD){ bD.style.display = flags.days ? 'inline-flex' : 'none'; }
+        if(bW){ bW.style.display = flags.weeks ? 'inline-flex' : 'none'; }
+        if(bM){ bM.style.display = flags.months ? 'inline-flex' : 'none'; }
+      }
+
+      function setActiveAgg(){
+        const bD=document.getElementById('btnAggDays');
+        const bW=document.getElementById('btnAggWeeks');
+        const bM=document.getElementById('btnAggMonths');
+        [bD,bW,bM].forEach(b=>b && b.classList.remove('active'));
+        if(stateAgg==='day' && bD) bD.classList.add('active');
+        if(stateAgg==='week'&& bW) bW.classList.add('active');
+        if(stateAgg==='month'&& bM) bM.classList.add('active');
+      }
+
+      // click handlers to set URL params and reload (backend must respect range/agg)
+      if(btnRangeDay)      btnRangeDay.addEventListener('click', ()=>{
+        state.scope='day';      url.searchParams.set('range','day');      url.searchParams.set('agg','day');      window.location.href=url.toString();
+      });
+      if(btnRangeWeek)     btnRangeWeek.addEventListener('click', ()=>{ state.scope='weeks';    url.searchParams.set('range','week');     url.searchParams.set('agg','week');     window.location.href=url.toString(); });
+      if(btnRangeMonth)    btnRangeMonth.addEventListener('click', ()=>{ state.scope='weeks';    url.searchParams.set('range','month');    url.searchParams.set('agg', stateAgg || 'week'); window.location.href=url.toString(); });
+      if(btnRangeHalfYear) btnRangeHalfYear.addEventListener('click',()=>{ state.scope='weeks';    url.searchParams.set('range','halfyear'); url.searchParams.set('agg','month');    window.location.href=url.toString(); });
+      if(btnRangeYear)     btnRangeYear.addEventListener('click', ()=>{ state.scope='weeks';    url.searchParams.set('range','year');     url.searchParams.set('agg','month');    window.location.href=url.toString(); });
+
+      // aggregation sub-controls (only affect top-left chart presentation within selected range)
+      const btnAggDays   = document.getElementById('btnAggDays');
+      const btnAggWeeks  = document.getElementById('btnAggWeeks');
+      const btnAggMonths = document.getElementById('btnAggMonths');
+      if(btnAggDays)   btnAggDays.addEventListener('click',  ()=>{ if(stateRange==='month'||stateRange==='halfyear'||stateRange==='year'){ stateAgg='day';   url.searchParams.set('agg','day');   window.location.href=url.toString(); }});
+      if(btnAggWeeks)  btnAggWeeks.addEventListener('click', ()=>{ if(stateRange==='month'||stateRange==='halfyear'||stateRange==='year'){ stateAgg='week';  url.searchParams.set('agg','week');  window.location.href=url.toString(); }});
+      if(btnAggMonths) btnAggMonths.addEventListener('click',()=>{ if(stateRange==='month'||stateRange==='halfyear'||stateRange==='year'){ stateAgg='month'; url.searchParams.set('agg','month'); window.location.href=url.toString(); }});
+
+      // initial visual state
+      setActiveRange();
+      setActiveAgg();
+      syncPickersToUrl();
+      attachPickerHandlers();
+
+      // Initial render of the top-left chart based on range+agg
+      renderTopChart();
+      // Toggle values button for top chart
+      const btnVals = document.getElementById('btnToggleValues');
+      if(btnVals){
+        btnVals.addEventListener('click', ()=>{
+          labelsVisible = !labelsVisible;
+          btnVals.textContent = labelsVisible ? 'Скрыть значения' : 'Показать значения';
+          if (weeklyChart){ weeklyChart.updateOptions({ dataLabels: { enabled: labelsVisible } }); }
+        });
+      }
+
+      // toggles
+      const toggles = [
+        ['toggle_weekly', buildWeeklyTable, 'weekly'],
+        ['toggle_grades', buildGradesTable, 'grades'],
+        ['toggle_posts',  buildPostsTable,  'posts'],
+        ['toggle_models', buildModelsTable, 'models'],
+      ];
+      toggles.forEach(([id, builder, key])=>{
+        const b = document.getElementById(id);
+        if(!b) return;
+        let built = false;
+        b.addEventListener('click', ()=>{
+          const wrap = document.querySelector({weekly:'#table_weekly_wrap',grades:'#table_grades_wrap',posts:'#table_posts_wrap',models:'#table_models_wrap'}[key]);
+          const isHidden = wrap.classList.contains('hidden');
+          if(isHidden){
+            if(!built){ builder(); built=true; }
+            showAs(key, 'table');
+          } else {
+            showAs(key, 'chart');
+
+          }
+        });
+      });
+      // reflect active area chips on load (including the "Все участки" pill as first child)
+      (function(){
+        const pills = Array.from(document.querySelectorAll('#postsAreas .pill'));
+        if(!pills.length) return;
+        const allMode = !state.areas || state.areas.length === 0;
+        // first pill is "Все участки"
+        if(pills[0]) pills[0].classList.toggle('active', allMode);
+        AREAS_ORDER.forEach((area, idx)=>{
+          const pill = pills[idx+1];
+          if(!pill) return;
+          pill.classList.toggle('active', !allMode && state.areas.includes(area));
+        });
+      })();
+    }
+    // ======== KTV Modal + API ========
+    const ktvModal = document.getElementById('ktvModal');
+    const ktvForm = document.getElementById('ktvForm');
+    const ktvTitle = document.getElementById('ktvModalTitle');
+    const f = (id)=>document.getElementById(id);
+    const inp = {
+      id: f('ktv_id'), table_type: f('ktv_table_type'), detail: f('ktv_detail'), defect: f('ktv_defect'), grade: f('ktv_grade'), count: f('ktv_count'), visible_from: f('ktv_visible_from'), comment: f('ktv_comment')
+    };
+    function openKTVModal(preset){
+      ktvTitle.textContent = preset && preset.id ? 'Изменить отложенный дефект' : 'Отложить дефект (KTV)';
+      inp.id.value = preset?.id || '';
+      inp.table_type.value = preset?.table_type || 'by_grades';
+      inp.detail.value = preset?.detail || '';
+      inp.defect.value = preset?.defect || '';
+      inp.grade.value = preset?.grade || '';
+      inp.count.value = preset?.count || '';
+      // default date = today
+      const today = new Date();
+      const iso = today.toISOString().slice(0,10);
+      inp.visible_from.value = preset?.visible_from || iso;
+      inp.comment.value = preset?.comment || '';
+      ktvModal.style.display = 'flex';
+    }
+    function closeKTVModal(){ ktvModal.style.display = 'none'; }
+    document.getElementById('ktvCancel').addEventListener('click', closeKTVModal);
+    ktvModal.addEventListener('click', (e)=>{ if(e.target===ktvModal) closeKTVModal(); });
+
+    // CSRF helper (Django cookie)
+    function getCookie(name){ let cookieValue = null; if (document.cookie && document.cookie !== '') { const cookies = document.cookie.split(';'); for (let i=0;i<cookies.length;i++){ const cookie = cookies[i].trim(); if (cookie.substring(0, name.length + 1) === (name + '=')) { cookieValue = decodeURIComponent(cookie.substring(name.length + 1)); break; } } } return cookieValue; }
+    const csrftoken = getCookie('csrftoken');
+
+    // Bind open buttons on source TOP tables
+    document.querySelectorAll('.ktv-open').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        openKTVModal({
+          table_type: btn.dataset.tableType,
+          detail: btn.dataset.detail,
+          defect: btn.dataset.defect,
+          grade: btn.dataset.grade && btn.dataset.grade !== '—' ? btn.dataset.grade : '',
+          count: btn.dataset.count
+        });
+      });
+    });
+
+    // Bind edit/delete buttons inside KTV lists
+    document.querySelectorAll('.ktv-edit').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        // read current row values to prefill
+        const tr = btn.closest('tr');
+        openKTVModal({
+          id: btn.dataset.id,
+          table_type: tr.closest('.ktv-card').querySelector('h3').textContent.includes('грейдам') ? 'by_grades' : 'by_mass',
+          detail: tr.children[0].textContent.trim(),
+          defect: tr.children[1].textContent.trim(),
+          grade: tr.children[2].textContent.trim() === '—' ? '' : tr.children[2].textContent.trim(),
+          count: tr.children[3].textContent.trim(),
+          // tr.children[4] is "Дефект от" (created_at) — not needed for modal
+          visible_from: (function(v){ const m = /(\d{2})\.(\d{2})\.(\d{4})/.exec(v); if(m){return `${m[3]}-${m[2]}-${m[1]}`;} return v; })(tr.children[5].textContent.trim()),
+          comment: tr.children[6].textContent.trim() === '—' ? '' : tr.children[6].textContent.trim()
+        });
+      });
+    });
+    document.querySelectorAll('.ktv-delete').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(!confirm('Удалить запись KTV?')) return;
+        fetch('{% url "ktv_delete" %}', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrftoken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: btn.dataset.id })
+        }).then(r=>{
+          if(!r.ok) throw new Error('Delete failed');
+          window.location.reload();
+        }).catch(()=>alert('Ошибка при удалении'));
+      });
+    });
+
+    // Submit handler (create or update)
+    ktvForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      const payload = {
+        id: inp.id.value || null,
+        table_type: inp.table_type.value,
+        detail: inp.detail.value.trim(),
+        defect: inp.defect.value.trim(),
+        grade: inp.grade.value.trim() || null,
+        count: Number(inp.count.value || 0),
+        visible_from: inp.visible_from.value,
+        comment: inp.comment.value.trim() || null
+      };
+      fetch('{% url "ktv_save" %}', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(async r=>{
+        if(!r.ok){ const t = await r.text(); throw new Error(t || 'Save failed'); }
+        closeKTVModal();
+        window.location.reload();
+      }).catch((err)=>{
+        alert('Ошибка при сохранении KTV');
+        console.error(err);
+      });
+    });
+
+    whenApexReady(boot);
+  });
+</script>
+{% endblock %}

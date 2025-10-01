@@ -1,0 +1,236 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% block title %}VES — передача/приём{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 760px">
+  <h4 class="mb-3">Пост — VES: передача / приём</h4>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} mb-2">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Поиск VIN (GET) -->
+  <form id="vin_get_form" method="get" action="" class="mb-3">
+    <div class="mb-2 position-relative">
+      <label class="form-label">VIN <span class="text-danger">*</span></label>
+      <div style="position: relative;">
+        <input
+          type="text"
+          id="vin_search"
+          name="vin"
+          class="form-control"
+          placeholder="Сканируйте или введите VIN…"
+          maxlength="17"
+          autocomplete="off"
+          value="{{ vin|default:'' }}"
+          autofocus
+        >
+        <button type="button"
+                id="clear_vin_search"
+                class="btn btn-link p-0"
+                style="position:absolute; right:10px; top:50%; transform:translateY(-50%); text-decoration:none;"
+                title="Очистить">
+          ✖
+        </button>
+      </div>
+
+      <!-- Кнопка сканера и контейнер -->
+      <div class="d-flex gap-2 mt-2">
+        <button type="button" id="start_qr_scan" class="btn btn-primary">
+          📷 Сканировать QR
+        </button>
+        <button type="submit" class="btn btn-outline-secondary">
+          Найти VIN
+        </button>
+      </div>
+      <div id="qr-reader" style="width:300px; display:none;"></div>
+
+      <!-- Подсказки по VIN -->
+      <ul id="vin_list" class="list-group mt-2" style="display:none; position:absolute; width:100%; z-index:1000;"></ul>
+    </div>
+  </form>
+
+  <!-- Блок информации по VIN -->
+  {% if trace %}
+    <div id="vehicle_info" class="mb-3 p-3 border rounded">
+      <h6 class="mb-2">Информация по VIN</h6>
+      <div class="row">
+        <div class="col-12"><strong>VIN:</strong> {{ trace.vin }}</div>
+        <div class="col-12"><strong>Номер двигателя:</strong> {{ trace.engine_number }}</div>
+        <div class="col-12"><strong>Модель:</strong> {{ trace.model }}</div>
+        <div class="col-12"><strong>Цвет кузова:</strong> {{ trace.body_color }}</div>
+        {% if trace.modification %}<div class="col-12"><strong>Модификация:</strong> {{ trace.modification }}</div>{% endif %}
+        {% if trace.config_code %}<div class="col-12"><strong>Код комплектации:</strong> {{ trace.config_code }}</div>{% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Состояние и действия -->
+  {% if vin %}
+    {% if show_receive_button and open_log %}
+      <div class="alert alert-warning">
+        VIN <strong>{{ vin }}</strong> отдан на VES:
+        <strong>{{ open_log.given_at|date:"Y-m-d H:i" }}</strong>
+        {% if open_log.given_by %} ({{ open_log.given_by.username }}){% endif %}.
+        Ожидает приёма.
+      </div>
+      <form method="post" class="mb-3 d-inline">
+        {% csrf_token %}
+        <input type="hidden" name="vin" value="{{ vin }}">
+        <input type="hidden" name="action" value="receive">
+        <button class="btn btn-success w-100">Принять с VES</button>
+      </form>
+    {% elif show_give_button %}
+      <div class="alert alert-info">
+        По VIN <strong>{{ vin }}</strong> открытых передач на VES нет.
+      </div>
+      <form method="post" class="mb-3 d-inline">
+        {% csrf_token %}
+        <input type="hidden" name="vin" value="{{ vin }}">
+        <input type="hidden" name="action" value="give">
+        <button class="btn btn-primary w-100">Отдать на VES</button>
+      </form>
+    {% endif %}
+  {% endif %}
+
+  {% if last_log %}
+    <div class="card mt-2">
+      <div class="card-header">Последняя операция</div>
+      <div class="card-body">
+        <div><strong>Отдан:</strong> {{ last_log.given_at|date:"Y-m-d H:i" }} {% if last_log.given_by %}({{ last_log.given_by.username }}){% endif %}</div>
+        <div><strong>Принят:</strong>
+          {% if last_log.received_at %}
+            {{ last_log.received_at|date:"Y-m-d H:i" }} {% if last_log.received_by %}({{ last_log.received_by.username }}){% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Библиотека сканера -->
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+// === QR-сканер ===
+document.addEventListener("DOMContentLoaded", function () {
+  const qrReaderEl = document.getElementById("qr-reader");
+  const startBtn = document.getElementById("start_qr_scan");
+  const vinInput = document.getElementById("vin_search");
+  const vinForm  = document.getElementById("vin_get_form");
+
+  const qrScanner = new Html5Qrcode("qr-reader");
+  let qrActive = false;
+
+  function submitSearch(){
+    if (vinForm) vinForm.submit();
+  }
+
+  function onScanSuccess(decodedText) {
+    if (vinInput) vinInput.value = (decodedText || "").trim().toUpperCase();
+    qrReaderEl.style.display = "none";
+    qrScanner.stop().finally(() => {
+      qrActive = false;
+      startBtn.innerText = "📷 Сканировать QR";
+      submitSearch();
+    });
+  }
+
+  startBtn.addEventListener("click", () => {
+    if (!qrActive) {
+      qrReaderEl.style.display = "block";
+      startBtn.innerText = "✖ Остановить сканирование";
+      qrScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        onScanSuccess
+      ).then(() => { qrActive = true; })
+       .catch(err => { console.error("Ошибка запуска камеры:", err); });
+    } else {
+      qrScanner.stop().finally(() => {
+        qrReaderEl.style.display = "none";
+        startBtn.innerText = "📷 Сканировать QR";
+        qrActive = false;
+      });
+    }
+  });
+
+  window.addEventListener("beforeunload", () => { if (qrActive) { try { qrScanner.stop(); } catch(_){} }});
+});
+</script>
+
+<script>
+// === Автоподсказка VIN + вывод трейсинга (клиентская сторона) ===
+(function(){
+  const vinInput  = document.getElementById("vin_search");
+  const vinList   = document.getElementById("vin_list");
+  const clearBtn  = document.getElementById("clear_vin_search");
+  const vinForm   = document.getElementById("vin_get_form");
+
+  if (!vinInput || !vinList) return;
+
+  let debounceTimer = null;
+  function debounce(fn, ms=200){
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(fn, ms);
+  }
+
+  function hideList(){
+    vinList.style.display = "none";
+    vinList.innerHTML = "";
+  }
+
+  vinInput.addEventListener("input", () => {
+    const q = vinInput.value.trim();
+    if (clearBtn) clearBtn.style.display = q ? "block" : "none";
+    if (!q) { hideList(); return; }
+
+    debounce(() => {
+      fetch(`/supplies/api/search_vin/?q=${encodeURIComponent(q)}`)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => {
+          const items = Array.isArray(data?.results) ? data.results : [];
+          vinList.innerHTML = "";
+          if (!items.length) { hideList(); return; }
+
+          items.forEach(item => {
+            const li = document.createElement("li");
+            li.className = "list-group-item list-group-item-action";
+            li.innerHTML = `<div class="d-flex justify-content-between">
+                <span>${item.vin || ""}</span>
+                <small class="text-muted">${(item.model || "").trim()}</small>
+              </div>`;
+            li.addEventListener("click", () => {
+              vinInput.value = (item.vin || "").trim().toUpperCase();
+              hideList();
+              if (vinForm) vinForm.submit();
+            });
+            vinList.appendChild(li);
+          });
+          vinList.style.display = "block";
+        })
+        .catch(err => { console.error("VIN search error:", err); hideList(); });
+    }, 200);
+  });
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      vinInput.value = "";
+      hideList();
+      clearBtn.style.display = "none";
+      vinInput.focus();
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    if (!vinList.contains(e.target) && !vinInput.contains(e.target)) hideList();
+  });
+})();
+</script>
+{% endblock %}

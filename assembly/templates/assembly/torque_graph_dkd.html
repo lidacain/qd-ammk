@@ -1,0 +1,246 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}График момента затяжки{% endblock %}
+
+{% block content %}
+<a href="{% url 'assembly_workshop_dashboard' %}" class="btn btn-outline-secondary mb-4">← Назад</a>
+<h2 class="text-center mb-4">График момента затяжки</h2>
+
+<form method="get">
+    {{ form.as_p }}
+    <button type="submit" class="btn btn-primary w-100">
+        📈 Построить график
+    </button>
+</form>
+
+    <style>
+        .suggestions-box {
+            background: white;
+            border: 1px solid #ccc;
+            max-height: 200px;
+            overflow-y: auto;
+            position: absolute;
+            z-index: 1000;
+            width: 100%;
+        }
+
+        .suggestion-item {
+            padding: 8px;
+            cursor: pointer;
+        }
+
+        .suggestion-item:hover {
+            background-color: #f0f0f0;
+        }
+    </style>
+
+{% if form.is_bound and not has_data %}
+    <div class="alert alert-warning text-center mt-4">
+        По выбранному узлу/детали и датам нет данных для отображения графика.
+    </div>
+{% endif %}
+
+{% if has_data %}
+    <canvas id="torqueChart" width="800" height="400"></canvas>
+
+    {{ labels|json_script:"labels-data" }}
+    {{ data|json_script:"data-points" }}
+    {{ chart_info|json_script:"chart-info" }}
+
+
+
+
+    <script>
+            const ctx = document.getElementById('torqueChart').getContext('2d');
+
+            // 🧩 Исходные данные
+            let labels = JSON.parse(document.getElementById("labels-data").textContent);
+            let dataPoints = JSON.parse(document.getElementById("data-points").textContent);
+            let chartInfo = JSON.parse(document.getElementById("chart-info").textContent);
+
+            // 🔁 Новый блок: сортировка VIN-групп по дате первой точки
+            const vinGroups = {};
+            chartInfo.forEach((point, i) => {
+                if (!vinGroups[point.vin]) vinGroups[point.vin] = [];
+                vinGroups[point.vin].push({
+                    torque: point.torque,
+                    vin: point.vin,
+                    timestamp: point.timestamp,
+                    label: labels[i],
+                    index: i
+                });
+            });
+
+            const sortedVinEntries = Object.entries(vinGroups).sort((a, b) => {
+                const aTime = new Date(a[1][0].timestamp);
+                const bTime = new Date(b[1][0].timestamp);
+                return aTime - bTime;
+            });
+
+            const sortedChartInfo = [];
+            const sortedLabels = [];
+            const sortedDataPoints = [];
+
+            sortedVinEntries.forEach(([vin, points]) => {
+                points.forEach(p => {
+                    sortedChartInfo.push({
+                        vin: p.vin,
+                        torque: p.torque,
+                        timestamp: p.timestamp
+                    });
+                    sortedLabels.push(p.label);
+                    sortedDataPoints.push(p.torque);
+                });
+            });
+
+            // 🔄 Переопределяем исходные переменные
+            labels = sortedLabels;
+            dataPoints = sortedDataPoints;
+            chartInfo = sortedChartInfo;
+
+            const colors = ['blue', 'orange', 'green', 'purple', 'brown'];
+            let vinColorMap = {};
+            let vinIndex = 0;
+
+            const pointColors = chartInfo.map(point => {
+                if (!vinColorMap[point.vin]) {
+                    vinColorMap[point.vin] = colors[vinIndex % colors.length];
+                    vinIndex++;
+                }
+                return vinColorMap[point.vin];
+            });
+
+            const data = {
+                labels: labels,
+                datasets: [{
+                    label: 'Момент затяжки',
+                    data: dataPoints,
+                    borderColor: '#666',
+                    fill: false,
+                    tension: 0.1,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    pointBackgroundColor: pointColors,
+                    pointBorderColor: pointColors,
+                    hidden: false
+                }, {
+                    label: 'Мин. значение',
+                    data: new Array(dataPoints.length).fill({{ min_torque }}),
+                    borderColor: 'red',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0
+                }, {
+                    label: 'Макс. значение',
+                    data: new Array(dataPoints.length).fill({{ max_torque }}),
+                    borderColor: 'green',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0
+                }]
+            };
+
+            const config = {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                            titleFont: {
+                                size: 14,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 13
+                            },
+                            padding: 12,
+                            borderWidth: 1,
+                            borderColor: '#999',
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    const index = context.dataIndex;
+                                    const point = chartInfo[index];
+                                    return [
+                                        `VIN: ${point.vin}`,
+                                        `Момент: ${point.torque} Nm`,
+                                    ];
+                                }
+                            }
+                        },
+                        legend: {
+                            labels: {
+                                font: {
+                                    size: 14
+                                },
+                                boxWidth: 20,
+                                padding: 15,
+                                        filter: function(legendItem) {
+                                    return legendItem.text !== 'Момент затяжки';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Дата и время'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Момент затяжки (Nm)'
+                            }
+                        }
+                    }
+                }
+            };
+
+            const chart = new Chart(ctx, config);
+
+            // ❗️Отключаем автоматическую линию только у первого графика
+            chart.data.datasets[0].borderWidth = 0;
+
+            // Плагин для цветных отрезков
+            Chart.register({
+                id: 'customColoredLines',
+                afterDatasetsDraw(chart, args, pluginOptions) {
+                    const {ctx} = chart;
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const chartInfo = JSON.parse(document.getElementById("chart-info").textContent);
+
+                    for (let i = 1; i < meta.data.length; i++) {
+                        const prevPoint = meta.data[i - 1];
+                        const currPoint = meta.data[i];
+
+                        const prevVin = chartInfo[i - 1].vin;
+                        const currVin = chartInfo[i].vin;
+
+                        let color = (prevVin === currVin)
+                            ? dataset.pointBackgroundColor[i] || '#666'
+                            : '#999';
+
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.moveTo(prevPoint.x, prevPoint.y);
+                        ctx.lineTo(currPoint.x, currPoint.y);
+                        ctx.lineWidth = 2.5;
+                        ctx.strokeStyle = color;
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            });
+
+            chart.update();
+        </script>
+
+{% endif %}
+{% endblock %}
+

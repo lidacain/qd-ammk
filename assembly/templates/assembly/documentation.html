@@ -1,0 +1,795 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Документация{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:720px">
+    <h4 class="mb-3">Пост — Документация</h4>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <form method="post" action="" enctype="multipart/form-data">
+      {% csrf_token %}
+      <input type="hidden" name="fixed_defects" id="fixed_defects">
+
+      <!-- VIN -->
+      <div class="mb-3 position-relative">
+        <label class="form-label">Номер VIN</label>
+
+        <!-- ✅ Обёртка без flex -->
+        <div class="position-relative" style="width: 100%;">
+            <input type="text" id="vin_search" name="vin_number" class="form-control" placeholder="Введите VIN..." maxlength="17" autocomplete="off"
+                   {% if user_role == "controller" %}readonly{% endif %}>
+            <!-- ❌ Кнопка очистки -->
+            <span id="clear_vin_search"
+                  style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+                         cursor: pointer; display: none; font-size: 18px;">❌</span>
+        </div>
+
+        <button type="button" id="start_qr_scan" class="btn btn-primary mt-2">
+            <i class="bi bi-qr-code-scan"></i> Сканировать QR
+        </button>
+        <div id="qr-reader" style="width: 300px; display: none;"></div>
+      </div>
+
+      <!-- Данные о VIN -->
+      <!-- Секция с дефектами (как в UUD) -->
+      <div id="defects_section" class="mb-4" style="{% if defects_count|default:0 == 0 %}display:none;{% endif %}">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h6 class="mb-0">Дефекты по VIN</h6>
+          <span class="badge bg-danger-subtle text-danger border">всего: {{ defects_count|default:0 }}</span>
+        </div>
+
+        <div class="accordion" id="defectsAccordion">
+          {% for item in defect_list %}
+            {% with key=forloop.counter|stringformat:"s" %}
+            {% with acc_id="defect-"|add:key %}
+            <div class="accordion-item mb-2
+              {% if item.extra.UUD %}
+                {% if item.extra.UUD.status == 'checking' %}uud-status-checking
+                {% elif item.extra.UUD.status == 'resolved' %}uud-status-resolved
+                {% elif item.extra.UUD.status == 'not_resolved' or not item.extra.UUD.status %}uud-status-failed
+                {% elif item.extra.UUD.status == 'impossible' %}uud-status-impossible
+                {% endif %}
+              {% else %}
+                uud-status-failed
+              {% endif %}
+            ">
+              <h2 class="accordion-header" id="heading-{{ acc_id }}">
+                <button class="accordion-button collapsed py-2" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#collapse-{{ acc_id }}"
+                        aria-expanded="false" aria-controls="collapse-{{ acc_id }}">
+                  <div class="w-100 d-flex flex-wrap align-items-center gap-2">
+                    <span class="badge bg-danger text-white">{{ item.grade|default:"—" }}</span>
+                    <strong class="me-1">{{ item.unit|default:"—" }}</strong>
+                    <span class="text-muted">— {{ item.name|default:"—" }}</span>
+                    <span class="ms-auto text-muted small">
+                      {{ item.zone|default:"" }}{% if item.post %} / {{ item.post }}{% endif %}
+                    </span>
+                  </div>
+                </button>
+              </h2>
+
+              <div id="collapse-{{ acc_id }}" class="accordion-collapse collapse"
+                   aria-labelledby="heading-{{ acc_id }}" data-bs-parent="#defectsAccordion">
+                <div class="accordion-body">
+                  {% with uud=item.extra.UUD %}
+                    {% if not uud or not uud.status or uud.status == "checking" or uud.status == "not_resolved" %}
+                      <div class="d-flex justify-content-end mb-2">
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-success resolve-defect-btn"
+                          data-defect-id="{{ item.defect_id }}"
+                          title="Пометить дефект как устранённый (применится при сохранении)"
+                        >
+                          Устранено
+                        </button>
+                        <small class="ms-2 text-muted d-none mark-note">будет применено при сохранении</small>
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <ul class="list-unstyled small mb-0">
+                        <li><strong>Деталь:</strong> {{ item.unit|default:"—" }}</li>
+                        <li><strong>Дефект:</strong> {{ item.name|default:"—" }}</li>
+                        <li><strong>Грейд:</strong> {{ item.grade|default:"—" }}</li>
+                        <li>
+                          <strong>Зона / Пост:</strong>
+                          {{ item.zone|default:"—" }}{% if item.post %} / {{ item.post }}{% endif %}
+                        </li>
+                        <li><strong>Ввел:</strong> {{ item.controller|default:"—" }}</li>
+                        <li>
+                          <strong>Когда:</strong>
+                          {% if item.date_added %}{{ item.date_added|date:"Y-m-d H:i" }}{% else %}—{% endif %}
+                        </li>
+                        {% if item.comment %}<li><strong>Комментарий:</strong> {{ item.comment }}</li>{% endif %}
+                      </ul>
+                    </div>
+
+                    <div class="col-md-6">
+                      {% if item.photos and item.photos|length > 0 %}
+                        {% with car_id="carousel-"|add:key %}
+                        <div id="{{ car_id }}" class="carousel slide" data-bs-ride="carousel">
+                          <div class="carousel-inner">
+                            {% for p in item.photos %}
+                              <div class="carousel-item {% if forloop.first %}active{% endif %}">
+                                <img src="{{ p }}" class="d-block w-100 rounded" alt="defect photo {{ forloop.counter }}">
+                              </div>
+                            {% endfor %}
+                          </div>
+                          {% if item.photos|length > 1 %}
+                            <button class="carousel-control-prev" type="button" data-bs-target="#{{ car_id }}" data-bs-slide="prev">
+                              <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                              <span class="visually-hidden">Previous</span>
+                            </button>
+                            <button class="carousel-control-next" type="button" data-bs-target="#{{ car_id }}" data-bs-slide="next">
+                              <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                              <span class="visually-hidden">Next</span>
+                            </button>
+                          {% endif %}
+                        </div>
+                        {% endwith %}
+                      {% else %}
+                        <div class="text-muted small">Фото не приложены</div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endwith %}
+            {% endwith %}
+          {% endfor %}
+        </div>
+
+        {% if history_updated_at %}
+          <div class="text-muted small mt-2">Обновлено: {{ history_updated_at|date:"Y-m-d H:i" }}</div>
+        {% endif %}
+      </div>
+
+      <!-- Фото документации -->
+      <div class="mb-3">
+        <label class="form-label">Фото документации <span style="color:red">*</span></label>
+
+        <!-- Скрытый input для камеры/галереи -->
+        <input
+          type="file"
+          id="documentation_photos"
+          name="documentation_photos"
+          accept="image/*"
+          capture="environment"
+          multiple
+          style="display:none;"
+        >
+
+        <!-- Кнопки действия -->
+        <div class="d-flex gap-2">
+          <button type="button" id="open_camera_btn" class="btn btn-outline-primary">
+            <i class="bi bi-camera"></i> Открыть камеру
+          </button>
+          <button type="button" id="open_gallery_btn" class="btn btn-outline-secondary">
+            <i class="bi bi-images"></i> Выбрать из галереи
+          </button>
+          <span id="photo_count_badge" class="badge bg-secondary align-self-center">0 фото</span>
+        </div>
+
+        <!-- Превью (карусель Bootstrap) -->
+        <div id="photo_preview_wrapper" class="mt-3" style="display:none;">
+          <div id="photoCarousel" class="carousel slide" data-bs-ride="false">
+            <div class="carousel-inner" id="photo_carousel_inner">
+              <!-- элементы .carousel-item со снимками добавим скриптом -->
+            </div>
+            <button class="carousel-control-prev" type="button" data-bs-target="#photoCarousel" data-bs-slide="prev">
+              <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+              <span class="visually-hidden">Previous</span>
+            </button>
+            <button class="carousel-control-next" type="button" data-bs-target="#photoCarousel" data-bs-slide="next">
+              <span class="carousel-control-next-icon" aria-hidden="true"></span>
+              <span class="visually-hidden">Next</span>
+            </button>
+          </div>
+
+          <!-- Плитка миниатюр под каруселью (опционально) -->
+          <div id="photo_thumbs" class="d-flex flex-wrap gap-2 mt-2">
+            <!-- миниатюры добавим скриптом -->
+          </div>
+        </div>
+
+        <!-- Подсказка -->
+        <div class="form-text">Можно сделать несколько фото. Качество сжимается автоматически при загрузке.</div>
+      </div>
+
+      <!-- Кнопка Сохранить -->
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-check2-circle"></i> Сохранить
+        </button>
+      </div>
+    </form>
+</div>
+
+<style>
+  /* Базовая карточка: сохраняем левую полосу и делаем фон управляемым */
+  #defects_section .accordion-item{
+    border-left: 10px solid transparent;   /* цвет задаётся классом статуса ниже */
+    background-color: #fff;                /* дефолт на всякий случай */
+    overflow: hidden;
+  }
+
+  /* Прокрашиваем и заголовок, и тело карточки (Bootstrap по умолчанию делает белым) */
+  #defects_section .accordion-button{
+    background-color: transparent !important; /* пусть просвечивает фон .accordion-item */
+    box-shadow: none !important;
+  }
+  #defects_section .accordion-button:not(.collapsed){
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+  #defects_section .accordion-body{
+    background-color: transparent !important; /* фон берём у .accordion-item */
+  }
+
+  /* Палитра по статусам: и полоса, и лёгкий фон всей карточки */
+  #defects_section .accordion-item.uud-status-checking{
+    --cell-bg: #FFF8E1;   /* светло-жёлтый */
+    --cell-line: #FFC107; /* полоса */
+    background-color: var(--cell-bg);
+    border-left-color: var(--cell-line);
+  }
+  #defects_section .accordion-item.uud-status-resolved{
+    --cell-bg: #EAF7EF;   /* светло-зелёный */
+    --cell-line: #198754;
+    background-color: var(--cell-bg);
+    border-left-color: var(--cell-line);
+  }
+  #defects_section .accordion-item.uud-status-failed{
+    --cell-bg: #FDECEA;   /* светло-красный */
+    --cell-line: #DC3545;
+    background-color: var(--cell-bg);
+    border-left-color: var(--cell-line);
+  }
+  #defects_section .accordion-item.uud-status-impossible{
+    --cell-bg: #F1F1F1;   /* светло-серый */
+    --cell-line: #6C757D;
+    background-color: var(--cell-bg);
+    border-left-color: var(--cell-line);
+  }
+</style>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+// =======================
+// Настройки / helpers
+// =======================
+const VIN_SUGGEST_ENDPOINTS = ["/assembly/api/search_vin/"];
+const VIN_API = "/assembly/api/vin-lookup/";
+const vinInput = document.getElementById("vin_search");
+const clearBtn = document.getElementById("clear_vin_search");
+const qrBtn = document.getElementById("start_qr_scan");
+const qrReaderEl = document.getElementById("qr-reader");
+const traceBox = document.getElementById("trace_data_container");
+const vinValueEl = document.getElementById("vin_value");
+const engineNumberEl = document.getElementById("engine_number_value");
+const confCodeEl = document.getElementById("configuration_code");
+const modelValueEl = document.getElementById("model_value");
+const bodyColorEl = document.getElementById("body_color_value");
+const driveTypeEl = document.getElementById("drive_type_value");
+
+const fileInput = document.getElementById("documentation_photos");
+const openCameraBtn = document.getElementById("open_camera_btn");
+const openGalleryBtn = document.getElementById("open_gallery_btn");
+const countBadge = document.getElementById("photo_count_badge");
+const previewWrap = document.getElementById("photo_preview_wrapper");
+const carouselInner = document.getElementById("photo_carousel_inner");
+const thumbs = document.getElementById("photo_thumbs");
+
+let selectedFiles = [];        // наша копия всех добавленных файлов
+let qrInstance = null;         // Html5Qrcode инстанс
+let suggestBox = null;         // контейнер подсказок VIN
+
+function debounce(fn, ms) {
+  let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// Достаём 17-символьный VIN (верхний регистр) из текста (после QR)
+function extractVinFromText(text) {
+  if (!text) return "";
+  const upper = String(text).toUpperCase();
+  // жёстко 17 A-Z0-9 (без I,O,Q не фильтруем на фронте)
+  const m = upper.match(/[A-Z0-9]{17}/);
+  return m ? m[0] : upper.replace(/[^A-Z0-9]/g, "").slice(0,17);
+}
+
+// =======================
+// Подсказки VIN (autocomplete)
+// =======================
+function ensureSuggestBox() {
+  if (suggestBox) return suggestBox;
+  // создаём контейнер прямо в той же обёртке, чтобы позиционирование было аккуратным
+  const wrapper = vinInput.parentElement;
+  const box = document.createElement("div");
+  box.id = "vin_suggest";
+  box.className = "list-group position-absolute w-100";
+  box.style.zIndex = "1000";
+  box.style.maxHeight = "240px";
+  box.style.overflow = "auto";
+  box.style.display = "none";
+  box.style.top = "100%";
+  box.style.left = "0";
+  wrapper.appendChild(box);
+  suggestBox = box;
+  return suggestBox;
+}
+
+async function fetchVinSuggestions(q) {
+  // пробуем разные имена параметров
+  const paramNames = ["q", "term", "query", "search"];
+  for (const base of VIN_SUGGEST_ENDPOINTS) {
+    for (const pname of paramNames) {
+      const url = `${base}?${pname}=${encodeURIComponent(q)}`;
+      try {
+        const r = await fetch(url, {
+          headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+          credentials: "same-origin"
+        });
+        if (!r.ok) continue;
+
+        // некоторые API могут вернуть текст с HTML при редиректе — страхуемся
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { continue; }
+
+        // нормализуем разные формы
+        let arr = [];
+        if (Array.isArray(data)) arr = data;
+        else if (Array.isArray(data.results)) arr = data.results;
+        else if (Array.isArray(data.items)) arr = data.items;
+        else if (Array.isArray(data.vins)) arr = data.vins;
+        else if (Array.isArray(data.suggestions)) arr = data.suggestions;
+
+        // если нашли что-то — возвращаем
+        if (arr.length) return arr.slice(0, 12);
+      } catch (e) {
+        // просто идём дальше по вариантам
+        console.debug("VIN suggest fetch failed:", e);
+      }
+    }
+  }
+  return [];
+}
+
+const renderSuggestions = debounce(async function(q) {
+  const box = ensureSuggestBox();
+
+  // Порог теперь 3 символа
+  if (!q || q.length < 1) {
+    box.style.display = "none";
+    box.innerHTML = "";
+    return;
+  }
+
+  try {
+    const items = await fetchVinSuggestions(q);
+    if (!items.length) {
+      box.style.display = "none";
+      box.innerHTML = "";
+      return;
+    }
+
+    box.innerHTML = "";
+    items.forEach((item) => {
+      const vin = (typeof item === "string"
+                    ? item
+                    : (item.vin || item.VIN || item.code || item.value || "")
+                  ).toString().toUpperCase();
+      if (!vin) return;
+
+      const subtitle = (typeof item === "object"
+                         ? (item.model || item.Model || item.name || "")
+                         : "");
+      const a = document.createElement("a");
+      a.href = "javascript:void(0)";
+      a.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
+      a.innerHTML = `<span>${vin}</span>${subtitle ? `<small class="text-muted">${subtitle}</small>` : ""}`;
+
+      a.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        if (vinInput) {
+          vinInput.value = vin;      // <-- подставляем VIN в поле
+          updateClearBtn();
+        }
+        box.style.display = "none";
+        box.innerHTML = "";
+        triggerVinSearch(vin);       // как и было — уходим на ?vin=...
+      });
+      box.appendChild(a);
+    });
+    box.style.display = "block";
+  } catch (e) {
+    console.debug("VIN suggest render error:", e);
+    box.style.display = "none";
+    box.innerHTML = "";
+  }
+}, 250);
+
+function triggerVinSearch(vin) {
+  if (!vin) return;
+  const v = String(vin).trim().toUpperCase();
+  if (!v) return;
+
+  const base = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+  params.set('vin', v);
+
+  // чуть прокрутим к дефектам после перезагрузки
+  window.location.replace(`${base}?${params.toString()}#defects_section`);
+}
+
+// =======================
+// Загрузка и показ информации по VIN
+// =======================
+async function loadVehicleInfo(vin) {
+  if (!vin || vin.length < 5) {
+    if (traceBox) traceBox.style.display = "none";
+    return;
+  }
+
+  // пробуем разные имена параметров
+  const paramNames = ["vin", "vin_number", "q", "code"];
+  let data = null;
+
+  for (const pname of paramNames) {
+    const url = `${VIN_API}?${pname}=${encodeURIComponent(vin)}`;
+    try {
+      const r = await fetch(url, {
+        headers: {"Accept":"application/json","X-Requested-With":"XMLHttpRequest"},
+        credentials: "same-origin"
+      });
+      if (!r.ok) continue;
+
+      // иногда сервер возвращает text/html при редиректе — страхуемся
+      const text = await r.text();
+      try { data = JSON.parse(text); } catch { data = null; }
+      if (data) break;
+    } catch (_) {}
+  }
+
+  if (!data) {
+    if (traceBox) traceBox.style.display = "none";
+    return;
+  }
+
+  // нормализуем разные формы ответа
+  // допустимы: { … }, {vehicle:{…}}, {result:{…}}, {results:[…]}, [ … ]
+  const first = (arr) => (Array.isArray(arr) && arr.length ? arr[0] : null);
+  let obj = null;
+
+  if (Array.isArray(data)) obj = first(data);
+  else if (data.vehicle && typeof data.vehicle === "object") obj = data.vehicle;
+  else if (data.result && typeof data.result === "object") obj = data.result;
+  else if (Array.isArray(data.results)) obj = first(data.results);
+  else obj = data;
+
+  if (!obj || typeof obj !== "object") {
+    if (traceBox) traceBox.style.display = "none";
+    return;
+  }
+
+  // утилита: взять первое существующее поле из списка алиасов
+  const pick = (o, keys, fallback="—") => {
+    for (const k of keys) {
+      if (o[k] !== undefined && o[k] !== null && String(o[k]).trim() !== "") return o[k];
+      // поддержка nested: "info.engine_no"
+      if (k.includes(".")) {
+        const parts = k.split(".");
+        let cur = o;
+        for (const p of parts) cur = (cur && cur[p] !== undefined) ? cur[p] : undefined;
+        if (cur !== undefined && cur !== null && String(cur).trim() !== "") return cur;
+      }
+    }
+    return fallback;
+  };
+
+  // алиасы под разные возможные названия полей
+  const VIN_VAL    = pick(obj, ["vin","VIN","Vin","vin_rk","code","value"], vin);
+  const MODEL      = pick(obj, ["model","Model","model_name","spec.model"]);
+  const COLOR      = pick(obj, ["body_color","color","color_body","paint","paint_code","spec.color"]);
+  const DRIVE      = pick(obj, ["drive_type","drive","drivetrain","drive_unit","spec.drive"]);
+
+  vinValueEl.textContent       = VIN_VAL || vin;
+  modelValueEl.textContent     = MODEL || "—";
+  bodyColorEl.textContent      = COLOR || "—";
+  driveTypeEl.textContent      = DRIVE || "—";
+
+  if (traceBox) traceBox.style.display = "block";
+}
+
+// =======================
+// QR сканирование (html5-qrcode)
+// =======================
+async function startQrScan() {
+  if (!window.Html5Qrcode) {
+    alert("QR-сканер недоступен (нет Html5Qrcode).");
+    return;
+  }
+  if (qrInstance) return; // уже идёт
+  qrReaderEl.style.display = "block";
+  qrBtn.disabled = true;
+  qrBtn.textContent = "Сканирование...";
+
+  qrInstance = new Html5Qrcode(/* element id */ "qr-reader");
+  const config = { fps: 10, qrbox: 220 };
+
+  try {
+    await qrInstance.start(
+      { facingMode: "environment" },
+      config,
+      (decodedText) => {
+        const vin = extractVinFromText(decodedText);
+        if (vin && vin.length >= 8) {
+          stopQrScan();
+          const v17 = vin.slice(0,17);
+          if (vinInput) {
+            vinInput.value = v17;   // <-- подставляем VIN в поле
+            updateClearBtn();
+          }
+          triggerVinSearch(v17);    // переходим на ?vin=...#defects_section
+        }
+      },
+      (errorMsg) => { /* игнорим шум */ }
+    );
+  } catch (e) {
+    console.error("QR start error:", e);
+    stopQrScan();
+    alert("Не удалось запустить камеру для QR.");
+  }
+}
+
+
+async function stopQrScan() {
+  try {
+    if (qrInstance) {
+      await qrInstance.stop();
+      await qrInstance.clear();
+    }
+  } catch(e) {}
+  qrInstance = null;
+  qrReaderEl.style.display = "none";
+  qrBtn.disabled = false;
+  qrBtn.innerHTML = '<i class="bi bi-qr-code-scan"></i> Сканировать QR';
+}
+
+// =======================
+// Фото: камера/галерея, превью, карусель
+// =======================
+function rebuildFileInputFromSelected() {
+  const dt = new DataTransfer();
+  selectedFiles.forEach(f => dt.items.add(f));
+  fileInput.files = dt.files;
+  // счётчик
+  countBadge.textContent = `${selectedFiles.length} фото`;
+  // показать/спрятать превью блок
+  previewWrap.style.display = selectedFiles.length ? "block" : "none";
+}
+
+function renderPreviews() {
+  carouselInner.innerHTML = "";
+  thumbs.innerHTML = "";
+  selectedFiles.forEach((file, idx) => {
+    const url = URL.createObjectURL(file);
+
+    // слайд карусели
+    const item = document.createElement("div");
+    item.className = "carousel-item" + (idx === 0 ? " active" : "");
+    item.innerHTML = `<img src="${url}" class="d-block w-100" alt="photo ${idx+1}" style="object-fit:contain;max-height:380px;">`;
+    carouselInner.appendChild(item);
+
+    // миниатюра
+    const th = document.createElement("img");
+    th.src = url;
+    th.alt = `thumb ${idx+1}`;
+    th.style.height = "64px";
+    th.style.cursor = "pointer";
+    th.className = "rounded border";
+    th.addEventListener("click", () => {
+      const carousel = bootstrap.Carousel.getOrCreateInstance(document.getElementById("photoCarousel"));
+      carousel.to(idx);
+    });
+    thumbs.appendChild(th);
+  });
+}
+
+fileInput.addEventListener("change", (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  // На некоторых браузерах повторный выбор перетирает предыдущие файлы — копим сами
+  // Фильтруем только картинки
+  const images = files.filter(f => (f.type || "").startsWith("image/"));
+  selectedFiles = selectedFiles.concat(images);
+  rebuildFileInputFromSelected();
+  renderPreviews();
+});
+
+// Открыть камеру — используем capture="environment"
+openCameraBtn.addEventListener("click", () => {
+  if (!fileInput.hasAttribute("capture")) fileInput.setAttribute("capture", "environment");
+  fileInput.click();
+});
+
+// Открыть галерею — временно убираем capture
+openGalleryBtn.addEventListener("click", () => {
+  const hadCapture = fileInput.hasAttribute("capture");
+  if (hadCapture) fileInput.removeAttribute("capture");
+  fileInput.click();
+  // вернём capture через небольшой таймаут (после выбора)
+  setTimeout(() => { if (hadCapture) fileInput.setAttribute("capture","environment"); }, 1000);
+});
+
+// =======================
+// VIN поле: UX + события
+// =======================
+function updateClearBtn() {
+  clearBtn.style.display = vinInput.value ? "inline" : "none";
+}
+
+vinInput.addEventListener("input", (e) => {
+  const v = e.target.value.toUpperCase();
+  e.target.value = v.replace(/[^A-Z0-9]/g, "").slice(0, 17);
+  updateClearBtn();
+  renderSuggestions(e.target.value);
+  // грузим инфо, если уже 17
+  if (e.target.value.length === 17) {
+    loadVehicleInfo(e.target.value);
+  }
+});
+
+vinInput.addEventListener("focus", () => {
+  if (vinInput.value.length >= 1) renderSuggestions(vinInput.value);
+});
+
+vinInput.addEventListener("blur", () => {
+  // чуть позже спрячем, чтобы успел отработать click по пункту
+  setTimeout(() => {
+    if (suggestBox) { suggestBox.style.display = "none"; }
+  }, 150);
+});
+
+clearBtn.addEventListener("click", () => {
+  vinInput.value = "";
+  updateClearBtn();
+  traceBox.style.display = "none";
+  if (suggestBox) { suggestBox.style.display = "none"; suggestBox.innerHTML = ""; }
+});
+
+qrBtn.addEventListener("click", () => {
+  if (qrInstance) stopQrScan(); else startQrScan();
+});
+
+// Если пользователь нажал Enter в поле VIN — не сабмитим сразу, а загружаем инфо
+vinInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (vinInput.value.length >= 8) triggerVinSearch(vinInput.value);
+  }
+});
+
+// =======================
+// Валидация перед сохранением
+// =======================
+document.querySelector("form").addEventListener("submit", (e) => {
+  const vin = vinInput.value.trim();
+  if (!vin || vin.length !== 17) {
+    e.preventDefault();
+    vinInput.focus();
+    alert("Введите корректный VIN (17 символов).");
+    return false;
+  }
+  if (!fileInput.files || fileInput.files.length === 0) {
+    e.preventDefault();
+    alert("Добавьте хотя бы одно фото документации.");
+    return false;
+  }
+  // ок — уходим на сабмит
+  return true;
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const url = new URL(window.location.href);
+    const vinFromUrl = url.searchParams.get('vin');
+    const vinInputEl = document.getElementById('vin_search');
+
+    if (vinFromUrl) {
+      // 1) ПОДСТАВЛЯЕМ VIN В ПОЛЕ (чтобы он был виден сразу)
+      if (vinInputEl) {
+        vinInputEl.value = vinFromUrl.toUpperCase();
+        if (typeof updateClearBtn === 'function') updateClearBtn();
+      }
+      // 2) УБИРАЕМ ?vin И ХЭШ ИЗ АДРЕСНОЙ СТРОКИ (чтобы не "сохранялся" в URL)
+      url.searchParams.delete('vin');
+      url.hash = '';
+      history.replaceState({}, '', url.toString());
+    } else {
+      // Если на странице НЕТ ?vin — это обычное обновление.
+      // На нём поле должно быть пустым и дефекты не показываем.
+      if (vinInputEl) {
+        vinInputEl.value = '';
+        if (typeof updateClearBtn === 'function') updateClearBtn();
+      }
+    }
+  } catch (_) {}
+});
+</script>
+
+<script>
+(function(){
+  // Набор помеченных к устранению дефектов
+  const fixedSet = new Set();
+  const hiddenInput = document.getElementById('fixed_defects');
+  const formEl = document.querySelector('form');
+  const vinInput = document.getElementById('vin_search');
+
+  function syncHidden() {
+    // в hidden кладём CSV: id1,id2,id3
+    hiddenInput.value = Array.from(fixedSet).join(',');
+  }
+
+  // Клик по кнопке "Устранено": просто помечаем локально, UI сильно не меняем
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.resolve-defect-btn');
+    if (!btn) return;
+
+    const vin = (vinInput && vinInput.value || '').trim().toUpperCase();
+    if (!vin || vin.length < 8) {
+      alert('VIN пустой. Сначала выберите/отсканируйте VIN.');
+      return;
+    }
+
+    const defectId = btn.getAttribute('data-defect-id');
+    if (!defectId) {
+      alert('Не удалось определить идентификатор дефекта.');
+      return;
+    }
+
+    // Тогглим метку: можно повторным нажатием снять
+    if (fixedSet.has(defectId)) {
+      fixedSet.delete(defectId);
+      // уберём маленькую подпись
+      const note = btn.parentElement.querySelector('.mark-note');
+      if (note) note.classList.add('d-none');
+      btn.classList.remove('btn-outline-success');
+    } else {
+      fixedSet.add(defectId);
+      // покажем маленькую подпись, но не меняем статус карточки
+      const note = btn.parentElement.querySelector('.mark-note');
+      if (note) note.classList.remove('d-none');
+      // лёгкий визуальный намёк, что помечено (кнопка остаётся той же)
+      btn.classList.add('btn-outline-success');
+    }
+
+    syncHidden();
+  });
+
+  // Перед отправкой формы гарантируем актуальное значение hidden
+  if (formEl) {
+    formEl.addEventListener('submit', () => {
+      syncHidden();
+      // НИКАКИХ запросов здесь — сервер сам применит изменения после POST
+    });
+  }
+})();
+</script>
+
+<script>
+  window.CURRENT_USER = "{{ request.user.get_username|default:'-'|escapejs }}";
+</script>
+
+
+{% endblock %}

@@ -1,0 +1,703 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Настройка постов{% endblock %}
+
+{% block content %}
+<style>
+    .scroll-container {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 0.5rem;
+    }
+.tab-inner-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 500px; /* фиксируй по дизайну */
+}
+
+.scroll-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+}
+
+</style>
+<div class="container-fluid mt-4">
+    <div class="mb-3">
+        <a href="{% url 'master_dashboard' %}" class="btn btn-secondary">
+            ← Назад
+        </a>
+    </div>
+
+    {% if messages %}
+      <div class="mb-3">
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <h3 class="mb-3">Настройка отображения данных на постах</h3>
+
+    <div class="row">
+        <!-- Левая колонка: Посты -->
+        <div class="col-md-3 border-end" style="max-height: 600px; overflow-y: auto;">
+            <h5>Посты</h5>
+            <ul class="list-group" id="post-list">
+                {% for post in posts %}
+                    <li class="list-group-item post-item" data-post-id="{{ post.id }}">
+                        {{ post.name }}
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Правая колонка: Таблица данных (ОБЕРНУТА!) -->
+        <div class="col-md-9">
+            <!-- Вкладки -->
+            <ul class="nav nav-tabs" id="dataTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="zones-tab" data-bs-toggle="tab" href="#zones" role="tab">Подсистемы</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="units-tab" data-bs-toggle="tab" href="#units" role="tab">Детали</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="defects-tab" data-bs-toggle="tab" href="#defects" role="tab">Дефекты</a>
+                </li>
+            </ul>
+
+            <!-- Контент вкладок -->
+            <div class="tab-content mt-3" id="dataTabsContent">
+
+                <!-- Подсистема -->
+                <div class="tab-pane fade show active" id="zones" role="tabpanel">
+                    <div class="tab-inner-wrapper">
+                        <!-- Форма добавления Подсистемы -->
+                        <form method="post" class="mb-3 d-flex align-items-center" style="gap: 10px;">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_type" value="zone">
+                            <input type="text" name="name" class="form-control" placeholder="Новая подсистема..." required>
+                            <button type="submit" class="btn btn-success">Сохранить</button>
+                        </form>
+
+                        <table class="table table-bordered align-middle custom-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px;"></th>
+                                    <th>Название подсистемы</th>
+                                    <th style="width: 120px;">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="zone-list">
+                                {% for zone in zones %}
+                                    <tr data-id="{{ zone.id }}" data-type="zone">
+                                        <td>
+                                            <input class="form-check-input visibility-checkbox"
+                                                   type="checkbox"
+                                                   data-id="{{ zone.id }}"
+                                                   data-type="zone">
+                                        </td>
+                                        <td>
+                                            <form method="post" class="inline-edit-form row g-2 align-items-center">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="id" value="{{ zone.id }}">
+                                                <input type="text" name="name" value="{{ zone.name }}" class="form-control form-control-sm">
+                                        </td>
+                                        <td class="text-nowrap">
+                                            <div class="d-flex gap-1">
+                                                <!-- Сохранить -->
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-success"
+                                                        formaction="{% url 'assembly_zone_update' %}">
+                                                    💾
+                                                </button>
+                                                <!-- Удалить -->
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-danger"
+                                                        formaction="{% url 'assembly_zone_delete' %}"
+                                                        onclick="return confirm('Удалить подсистему «{{ zone.name }}»?')">
+                                                    🗑
+                                                </button>
+                                            </div>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">Нет подсистем</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ДЕТАЛИ -->
+                <div class="tab-pane fade" id="units" role="tabpanel">
+                    <div class="tab-inner-wrapper">
+
+                        <!-- 🧾 Форма добавления детали -->
+                        <form method="post" class="mb-3 d-flex align-items-center flex-wrap" style="gap: 10px;">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_type" value="unit">
+                            <input type="text" name="name" class="form-control" placeholder="Новая деталь..." required>
+                            <select name="zone" class="form-select" required>
+                                <option value="" disabled selected>Выберите Подсистему</option>
+                                {% for zone in zones %}
+                                    <option value="{{ zone.id }}">{{ zone.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-success">Сохранить</button>
+                        </form>
+
+                        <!-- 🔍 Кнопки фильтрации по Подсистема -->
+                        <div class="d-flex flex-wrap mb-3" style="gap: 8px;">
+                            <!-- ⚠️ без active по умолчанию — его поставит JS из URL -->
+                            <button type="button" class="btn btn-outline-secondary btn-sm filter-zone-btn" data-zone-id="all">
+                                Все подсистемы
+                            </button>
+                            {% for zone in zones %}
+                                <button type="button" class="btn btn-outline-secondary btn-sm filter-zone-btn" data-zone-id="{{ zone.id }}">
+                                    {{ zone.name }}
+                                </button>
+                            {% endfor %}
+                            <button type="button" class="btn btn-outline-secondary btn-sm filter-zone-btn" data-zone-id="__none__">
+                                Без подсистемы
+                            </button>
+                        </div>
+
+                        <!-- 📋 Список деталей -->
+                        <table class="table table-bordered align-middle custom-table">
+                            <thead>
+                              <tr>
+                                <th style="width: 50px;"></th>
+                                <th>Название детали</th>
+                                <th>Подсистема</th>
+                                <th style="width: 120px;">Действия</th>
+                              </tr>
+                            </thead>
+                            <tbody id="unit-list">
+                              {% for unit in units %}
+                                <tr data-id="{{ unit.id }}" data-type="unit" data-zone-id="{{ unit.zone_id|default_if_none:'' }}">
+                                  <td>
+                                    <input class="form-check-input visibility-checkbox"
+                                           type="checkbox"
+                                           data-id="{{ unit.id }}"
+                                           data-type="unit">
+                                  </td>
+                                  <td>
+                                    <form method="post" class="inline-edit-form row g-2 align-items-center">
+                                      {% csrf_token %}
+                                      <input type="hidden" name="id" value="{{ unit.id }}">
+                                      <input type="text" name="name" value="{{ unit.name }}" class="form-control form-control-sm">
+                                  </td>
+                                  <td>
+                                      <select name="zone" class="form-select form-select-sm">
+                                        <option value="" {% if not unit.zone_id %}selected{% endif %}>Без подсистемы</option>
+                                        {% for z in zones %}
+                                          <option value="{{ z.id }}" {% if unit.zone_id == z.id %}selected{% endif %}>{{ z.name }}</option>
+                                        {% endfor %}
+                                      </select>
+                                  </td>
+                                  <td class="text-nowrap">
+                                      <div class="d-flex gap-1">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-success"
+                                                formaction="{% url 'assembly_unit_update' %}">
+                                          💾
+                                        </button>
+                                        <button type="submit"
+                                                class="btn btn-sm btn-danger"
+                                                formaction="{% url 'assembly_unit_delete' %}"
+                                                onclick="return confirm('Удалить деталь «{{ unit.name }}»?')">
+                                          🗑
+                                        </button>
+                                      </div>
+                                    </form>
+                                  </td>
+                                </tr>
+                              {% empty %}
+                                <tr>
+                                  <td colspan="4" class="text-center text-muted">Нет деталей</td>
+                                </tr>
+                              {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ДЕФЕКТЫ -->
+                <div class="tab-pane fade" id="defects" role="tabpanel">
+                    <div class="tab-inner-wrapper">
+                        <!-- Форма добавления дефекта -->
+                        <form method="post" class="mb-3 d-flex align-items-center" style="gap: 10px;">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_type" value="defect">
+                            <input type="text" name="name" class="form-control" placeholder="Новый дефект..." required>
+                            <button type="submit" class="btn btn-success">Сохранить</button>
+                        </form>
+
+                        <table class="table table-bordered align-middle custom-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px;"></th>
+                                    <th>Название дефекта</th>
+                                    <th style="width: 120px;">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="defect-list">
+                                {% for defect in defects %}
+                                    <tr data-id="{{ defect.id }}" data-type="defect">
+                                        <td>
+                                            <input class="form-check-input visibility-checkbox"
+                                                   type="checkbox"
+                                                   data-id="{{ defect.id }}"
+                                                   data-type="defect">
+                                        </td>
+                                        <td>
+                                            <form method="post" class="inline-edit-form row g-2 align-items-center">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="id" value="{{ defect.id }}">
+                                                <input type="text" name="name" value="{{ defect.name }}" class="form-control form-control-sm">
+                                        </td>
+                                        <td class="text-nowrap">
+                                            <div class="d-flex gap-1">
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-success"
+                                                        formaction="{% url 'assembly_defect_update' %}">
+                                                    💾
+                                                </button>
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-danger"
+                                                        formaction="{% url 'assembly_defect_delete' %}"
+                                                        onclick="return confirm('Удалить дефект «{{ defect.name }}»?')">
+                                                    🗑
+                                                </button>
+                                            </div>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">Нет дефектов</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<style>
+    .post-item {
+        cursor: pointer;
+    }
+    .post-item.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+    .list-group-item.active {
+        background-color: #0d6efd;
+        color: white;
+        font-weight: 500;
+    }
+    /* фон всей таблицы серый */
+    .custom-table { background-color: #f2f2f2; }
+
+    /* строки не красим */
+    .custom-table tbody tr { background-color: transparent; }
+
+    /* ЯЧЕЙКИ белые */
+    .custom-table tbody td { background-color: #ffffff; }
+
+    /* заголовок слегка серый */
+    .custom-table thead th { background-color: #f7f7f7; }
+
+    /* границы помягче */
+    .custom-table td, .custom-table th { border-color: #dcdcdc !important; }
+
+    /* ховер – лёгкое затемнение белой ячейки */
+    .custom-table tbody tr:hover td { background-color: #fafafa; }
+</style>
+<script>
+    const postVisibility = {{ post_visibility_json|safe }};
+    let currentPostId = null;  // ✅ Объявлено в начале
+
+    document.addEventListener("DOMContentLoaded", function () {
+
+        // 🔹 Подсветка связанных элементов
+        function highlightItemsByIds(type, ids) {
+            const selected = Array.isArray(ids) ? ids.map(Number) : [];
+            document.querySelectorAll(`tr[data-type="${type}"]`).forEach(item => {
+                const id = Number(item.dataset.id);
+                const checkbox = item.querySelector(`.visibility-checkbox[data-type="${type}"]`);
+                const active = selected.includes(id);
+                item.classList.toggle("active", active);
+                if (checkbox) checkbox.checked = active;
+            });
+        }
+
+        // 🔹 Выбор поста
+        document.querySelectorAll(".post-item").forEach(item => {
+            item.addEventListener("click", function () {
+                // ✅ Удаляем активный класс у всех постов
+                document.querySelectorAll(".post-item").forEach(i => i.classList.remove("active"));
+                this.classList.add("active");
+
+                // ✅ Сохраняем текущий пост
+                currentPostId = this.dataset.postId;
+
+                // ✅ Загружаем связанные элементы и подсвечиваем
+                const visibility = postVisibility[currentPostId];
+                if (visibility) {
+                    highlightItemsByIds("zone", visibility.zones);
+                    highlightItemsByIds("unit", visibility.units);
+                    highlightItemsByIds("defect", visibility.defects);
+                }
+            });
+        });
+
+        // 🔹 Фильтрация при вводе (с отладкой)
+        document.querySelectorAll('.filter-input').forEach(input => {
+            const targetId = input.dataset.target;
+            const listContainer = document.getElementById(targetId);
+
+            if (!listContainer) {
+                console.warn("❌ Не найден список:", targetId);
+                return;
+            }
+
+            input.addEventListener('input', function () {
+                const query = this.value.toLowerCase().trim();
+                const items = listContainer.querySelectorAll('.list-group-item');
+
+                items.forEach(item => {
+                    const text = item.textContent.toLowerCase().trim();
+                    const isVisible = text.includes(query);
+                    item.style.display = isVisible ? '' : 'none';
+                });
+            });
+        });
+
+        // 🔹 При клике по чекбоксу справа — обновление связи
+        document.querySelectorAll('.visibility-checkbox').forEach(checkbox => {
+            checkbox.addEventListener("change", function () {
+                if (!currentPostId) {
+                    alert("Сначала выберите пост слева.");
+                    this.checked = !this.checked;
+                    return;
+                }
+
+                const itemId = this.dataset.id;     // id зоны/детали/дефекта
+                const itemType = this.dataset.type; // "zone" | "unit" | "defect"
+                const element = this.closest('tr');
+
+                fetch("", {
+                    method: "POST",
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: `post_id=${encodeURIComponent(currentPostId)}&item_id=${encodeURIComponent(itemId)}&item_type=${encodeURIComponent(itemType)}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const itemIdInt = parseInt(itemId);
+
+                    if (data.status === "added") {
+                        element?.classList.add("active");
+                        checkbox.checked = true;
+
+                        // обновляем локально postVisibility
+                        const list = postVisibility[currentPostId][`${itemType}s`];
+                        if (!list.includes(itemIdInt)) list.push(itemIdInt);
+
+                        // если добавили ЗОНУ — предложить добавить все её детали
+                        if (itemType === "zone") {
+                            if (confirm("Перенести все детали этой подсистемы на выбранный пост?")) {
+                                fetch("", {
+                                    method: "POST",
+                                    headers: {
+                                        'Content-Type': 'application/x-www-form-urlencoded',
+                                        'X-CSRFToken': getCookie('csrftoken'),
+                                        'X-Requested-With': 'XMLHttpRequest'
+                                    },
+                                    body: `action=bulk_units_from_zone&post_id=${encodeURIComponent(currentPostId)}&zone_id=${encodeURIComponent(itemId)}`
+                                })
+                                .then(r => r.json())
+                                .then(bulk => {
+                                    if (!bulk.ok) {
+                                        alert(bulk.message || "Не удалось выполнить массовое добавление деталей.");
+                                        return;
+                                    }
+                                    const added = (bulk.added_unit_ids || []).map(Number);
+
+                                    // 1) обновим локальный список units
+                                    const unitsList = postVisibility[currentPostId]["units"];
+                                    added.forEach(uid => { if (!unitsList.includes(uid)) unitsList.push(uid); });
+
+                                    // 2) подсветим строки и чекбоксы
+                                    added.forEach(uid => {
+                                        const row = document.querySelector(`#unit-list tr[data-type="unit"][data-id="${uid}"]`);
+                                        if (row) {
+                                            row.classList.add("active");
+                                            const cb = row.querySelector('.visibility-checkbox[data-type="unit"]');
+                                            if (cb) cb.checked = true;
+                                        }
+                                    });
+                                })
+                                .catch(() => alert("Ошибка при массовом добавлении деталей."));
+                            }
+                        }
+
+                    } else if (data.status === "removed") {
+                        element?.classList.remove("active");
+                        checkbox.checked = false;
+
+                        // вычеркнем из локального postVisibility
+                        postVisibility[currentPostId][`${itemType}s`] =
+                            postVisibility[currentPostId][`${itemType}s`].filter(id => id !== itemIdInt);
+
+                        // если сняли ЗОНУ — предложить удалить все её детали с поста
+                        if (itemType === "zone") {
+                            if (confirm("Убрать все детали этой подсистемы с выбранного поста?")) {
+                                fetch("", {
+                                    method: "POST",
+                                    headers: {
+                                        'Content-Type': 'application/x-www-form-urlencoded',
+                                        'X-CSRFToken': getCookie('csrftoken'),
+                                        'X-Requested-With': 'XMLHttpRequest'
+                                    },
+                                    body: `action=bulk_remove_units_of_zone&post_id=${encodeURIComponent(currentPostId)}&zone_id=${encodeURIComponent(itemId)}`
+                                })
+                                .then(r => r.json())
+                                .then(bulk => {
+                                    if (!bulk.ok) {
+                                        alert(bulk.message || "Не удалось массово убрать детали.");
+                                        return;
+                                    }
+                                    const removed = (bulk.removed_unit_ids || []).map(Number);
+
+                                    // 1) обновим локальный список units
+                                    postVisibility[currentPostId]["units"] =
+                                        postVisibility[currentPostId]["units"].filter(uid => !removed.includes(uid));
+
+                                    // 2) снимем подсветку и чекбоксы
+                                    removed.forEach(uid => {
+                                        const row = document.querySelector(`#unit-list tr[data-type="unit"][data-id="${uid}"]`);
+                                        if (row) {
+                                            row.classList.remove("active");
+                                            const cb = row.querySelector('.visibility-checkbox[data-type="unit"]');
+                                            if (cb) cb.checked = false;
+                                        }
+                                    });
+                                })
+                                .catch(() => alert("Ошибка при массовом удалении деталей."));
+                            }
+                        }
+
+                    } else {
+                        alert("Ошибка: " + (data.message || "Неизвестная ошибка"));
+                        checkbox.checked = !checkbox.checked;
+                    }
+                })
+                .catch(() => {
+                    checkbox.checked = !checkbox.checked;
+                    alert("Ошибка при соединении с сервером.");
+                });
+            });
+        });
+
+        // 🔹 Получение CSRF-токена
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== "") {
+                const cookies = document.cookie.split(";");
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === name + "=") {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    });
+
+
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const zoneButtons = document.querySelectorAll(".filter-zone-btn");
+    // ⬇️ Берём СТРОКИ-строки таблицы, а не .list-group-item
+    const unitRows = document.querySelectorAll("#unit-list tr[data-zone-id]");
+
+    // выбранные подсистемы храним как строки
+    let selectedZones = new Set();
+
+    function applyButtonsState() {
+        zoneButtons.forEach(btn => btn.classList.remove("active"));
+        if (selectedZones.size === 0) {
+            document.querySelector('.filter-zone-btn[data-zone-id="all"]')?.classList.add("active");
+        } else {
+            selectedZones.forEach(id => {
+                document.querySelector(`.filter-zone-btn[data-zone-id="${id}"]`)?.classList.add("active");
+            });
+        }
+    }
+
+    function filterUnitsByZone() {
+        if (selectedZones.size === 0) {
+            unitRows.forEach(row => row.style.display = "");
+            return;
+        }
+
+        const showOnlyNoZone = selectedZones.has("__none__");
+
+        unitRows.forEach(row => {
+            const zoneId = (row.getAttribute("data-zone-id") || "").trim(); // "" если без подсистемы
+            if (showOnlyNoZone) {
+                row.style.display = zoneId === "" ? "" : "none";
+            } else {
+                row.style.display = selectedZones.has(zoneId) ? "" : "none";
+            }
+        });
+    }
+
+    zoneButtons.forEach(btn => {
+        btn.addEventListener("click", function () {
+            const id = String(this.getAttribute("data-zone-id"));
+
+            if (id === "all") {
+                selectedZones.clear(); // показать все
+            } else if (id === "__none__") {
+                selectedZones.clear();
+                selectedZones.add("__none__"); // показать только без подсистемы
+            } else {
+                // переключатель
+                if (selectedZones.has(id)) {
+                    selectedZones.delete(id);
+                } else {
+                    selectedZones.add(id);
+                    selectedZones.delete("__none__"); // нельзя вместе с "без подсистемпы"
+                }
+            }
+
+            applyButtonsState();
+            filterUnitsByZone();
+        });
+    });
+
+    // если переключаемся на вкладку "Детали" — обновим фильтр
+    document.getElementById("units-tab")?.addEventListener("shown.bs.tab", () => {
+        applyButtonsState();
+        filterUnitsByZone();
+    });
+
+    // первый запуск
+    applyButtonsState();
+    filterUnitsByZone();
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // универсалка для алертов (можешь заменить на свой toast)
+  function showInlineAlert(containerEl, msg, type='success') {
+    // type: success | danger | warning | info
+    const el = document.createElement('div');
+    el.className = `alert alert-${type} py-1 px-2 my-1`;
+    el.textContent = msg;
+    containerEl.prepend(el);
+    setTimeout(() => el.remove(), 2500);
+  }
+
+  // перехват всех инлайн-форм
+  document.querySelectorAll('.inline-edit-form').forEach(form => {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const submitBtn = e.submitter; // кнопка, по которой кликнули
+      const url = submitBtn?.getAttribute('formaction') || form.getAttribute('action') || '';
+      if (!url) return;
+
+      const formData = new FormData(form);
+      // добавим флаг, чтобы вьюха вернула JSON
+      const headers = {'X-Requested-With': 'XMLHttpRequest'};
+      // csrf уже есть в formData
+
+      fetch(url, {method: 'POST', body: formData, headers})
+        .then(r => r.json())
+        .then(data => {
+          // ожидаем {ok: true/false, message: "...", removed: true?}
+          const row = form.closest('tr') || form; // куда вставлять уведомление
+          if (data.removed) {
+            // удаление: убираем строку
+            const tr = form.closest('tr');
+            if (tr) tr.remove();
+            return;
+          }
+          if (data.ok) {
+            showInlineAlert(row, data.message || 'Сохранено', 'success');
+          } else {
+            showInlineAlert(row, data.message || 'Ошибка', 'danger');
+          }
+        })
+        .catch(() => {
+          const row = form.closest('tr') || form;
+          showInlineAlert(row, 'Ошибка соединения', 'danger');
+        });
+    });
+  });
+});
+</script>
+<style>
+/* Невидимая зона справа, по которой можно кликнуть */
+.scroll-to-top-zone {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 40px; /* ширина кликабельной зоны */
+    height: 100%;
+    cursor: pointer;
+    z-index: 9999;
+    background: transparent; /* чтобы не перекрывать видимость */
+}
+</style>
+
+<div class="scroll-to-top-zone" id="scrollToTopZone" title="Наверх"></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const zone = document.getElementById("scrollToTopZone");
+
+    // Изначально скрыта
+    zone.style.display = "none";
+
+    window.addEventListener("scroll", function () {
+        // показываем зону, если пролистали хотя бы один экран
+        if (window.scrollY > window.innerHeight) {
+            zone.style.display = "block";
+        } else {
+            zone.style.display = "none";
+        }
+    });
+
+    zone.addEventListener("click", function () {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+});
+</script>
+{% endblock %}

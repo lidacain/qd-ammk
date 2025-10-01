@@ -1,0 +1,119 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% load custom_filters %}
+{% block title %}Приёмка контейнеров{% endblock %}
+
+{% block content %}
+<style>
+    .table-header-fixed {
+        position: fixed;
+        top: 56px;
+        left: 0;
+        right: 0;
+        background-color: white;
+        border-bottom: 1px solid #dee2e6;
+        z-index: 1000;
+        padding: 12px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .table-container-scroll {
+        position: fixed;
+        top: 110px; /* ниже .table-header-fixed */
+        left: 0;
+        right: 0;
+        bottom: 0;
+        overflow: auto;
+        padding: 20px;
+        background-color: white;
+    }
+
+    table {
+        width: 100%;
+        min-width: 1100px;
+        border-collapse: collapse;
+    }
+
+    thead th {
+        position: sticky;
+        top: 0;
+        background-color: #212529;
+        color: white;
+        z-index: 10;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    .table td {
+        vertical-align: top;
+        word-break: break-word;
+        max-width: 360px;
+    }
+
+    .controller-info small {
+        display: block;
+        color: #6c757d;
+    }
+
+    .badge-yes { background: #dc3545; }   /* красный — есть дефект */
+    .badge-no  { background: #198754; }   /* зелёный — нет дефекта */
+</style>
+
+<div class="table-header-fixed">
+    <a href="{% url 'incoming_workshop_dashboard' %}" class="btn btn-outline-secondary">Назад</a>
+    <h3 class="m-0 text-center w-100">Таблица — Приёмка контейнеров</h3>
+</div>
+
+<div class="table-container-scroll">
+    <table class="table table-bordered table-hover table-striped align-middle">
+        <thead>
+            <tr>
+                <th>№</th>
+                <th>Дата</th>
+                <th>Контролёр</th>
+                <th>Номер контейнера</th>
+                <th>Есть дефект</th>
+                <th>Описание</th>
+                <th>Фото</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in records %}
+            <tr class="{% if row.has_defect %}table-danger{% else %}table-success{% endif %}">
+                <td class="text-center">{{ forloop.counter }}</td>
+                <td>{{ row.date|date:"d.m.Y H:i" }}</td>
+                <td class="controller-info">
+                    {{ row.controller }}
+                    {% with controller_users|dict_get:row.controller as user %}
+                        {% if user %}
+                            <small>{{ user.last_name }} {{ user.first_name }}</small>
+                        {% endif %}
+                    {% endwith %}
+                </td>
+                <td class="text-center">{{ row.container_number }}</td>
+                <td class="text-center">
+                    {% if row.has_defect %}
+                        <span class="badge badge-yes">Да</span>
+                    {% else %}
+                        <span class="badge badge-no">Нет</span>
+                    {% endif %}
+                </td>
+                <td>{{ row.description|default:"" }}</td>
+                <td>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+                        {% for img in row.photos %}
+                            <a href="{% url 'view_image' image_path=img|cut:'/media/' %}?index={{ forloop.counter0 }}&group={{ row.group_key }}&photos={{ row.photos_json|urlencode }}">
+                                <img src="{{ img }}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;">
+                            </a>
+                        {% endfor %}
+                    </div>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Мониторинг активности (за {{ request.GET.minutes|default:180 }} мин)</h2>
+    <table class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>IP</th>
+                <th>username</th>
+                <th>Пользователь</th>
+                <th>Роль</th>
+                <th style="word-break: break-word; max-width: 300px;">URL</th>
+                <th>Последняя активность</th>
+            </tr>
+        </thead>
+        <tbody id="activity-table-body">
+        {% for log in logs %}
+            <tr>
+                <td>{{ log.ip_address }}</td>
+                <td>{{ log.user }}</td>
+                <td>{% if log.user %}{{ log.user.last_name }} {{ log.user.first_name }}{% else %}-{% endif %}</td>
+                <td>{{ log.role }}</td>
+                <td style="word-break: break-word; max-width: 300px;">
+                    {% if log.url %}
+                        <a href="{{ log.url }}" target="_blank" class="text-primary text-decoration-underline" style="word-break: break-word;">
+                            {{ log.url|truncatechars:60 }}
+                        </a>
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>{{ log.timestamp }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="6">Нет данных</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    // WebSocket соединение
+    const socket = new WebSocket(`wss://${window.location.host}/ws/activity-logs/`);
+
+    socket.onmessage = function(event) {
+        const log = JSON.parse(event.data);
+
+        const row = `
+            <tr>
+                <td>${log.ip_address}</td>
+                <td>${log.username}</td>
+                <td>${log.full_name}</td>
+                <td>${log.role}</td>
+                <td style="word-break: break-word; max-width: 300px;">
+                    ${log.url
+                        ? `<a href="${log.url}" target="_blank" class="text-primary text-decoration-underline">${log.url.length > 60 ? log.url.slice(0, 60) + '…' : log.url}</a>`
+                        : '-'}
+                </td>
+                <td>${log.timestamp}</td>
+            </tr>
+        `;
+
+        const tableBody = document.getElementById("activity-table-body");
+        tableBody.insertAdjacentHTML('afterbegin', row);
+    };
+
+    socket.onclose = function() {
+        console.error('WebSocket closed unexpectedly');
+    };
+</script>
+{% endblock %}

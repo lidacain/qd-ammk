@@ -1,0 +1,117 @@
+{% extends "users/base.html" %}
+{% block title %}РВД — Делопроизводитель{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <div class="mb-3">
+        <a href="{% url 'master_dashboard' %}" class="btn btn-secondary">
+            ← Назад
+        </a>
+    </div>
+
+    <h2 class="text-center mb-4">Все выбранные сотрудники</h2>
+
+    <!-- 👨‍💼 Таблица начальников участков -->
+    <div class="mb-4">
+        <div class="mb-3 d-flex justify-content-between align-items-center">
+            <h5>История переработок и выходных</h5>
+            <a href="{% url 'office_overtime_overview' %}" class="btn btn-outline-primary">
+                Перейти к отслеживанию выходных
+            </a>
+        </div>
+        <h5>Начальники участков и количество сотрудников</h5>
+        <table class="table table-bordered table-sm table-hover text-center w-50">
+            <thead class="table-light">
+                <tr>
+                    <th>Начальник участка</th>
+                    <th>Количество сотрудников</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stat in manager_stats %}
+                    <tr class="table-row-clickable {% if stat.id == current_manager %}table-active{% endif %}"
+                        onclick="window.location.href='?manager={{ stat.id }}'">
+                        <td>{{ stat.manager.get_full_name_with_patronymic|default:stat.manager.username }}</td>
+                        <td>{{ stat.count }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if current_manager %}
+            <div class="text-end">
+                <a href="{% url 'office_overview' %}" class="btn btn-outline-secondary btn-sm">
+                    🔄 Очистить фильтр
+                </a>
+            </div>
+        {% endif %}
+    </div>
+
+        <!-- 📄 Таблица сотрудников -->
+    <div class="mb-3 d-flex justify-content-between align-items-center">
+        <span class="badge bg-success">Всего сотрудников: {{ grouped|length }}</span>
+        <div>
+            <a href="{% url 'export_rvd_excel' %}" class="btn btn-success">📤 Экспорт в Excel</a>
+            <a href="{% url 'export_word_rvd' %}" class="btn btn-primary">📄 Экспорт в Word</a>
+
+            <form method="post" action="{% url 'delete_all_selections_dp' %}" style="display: inline;" onsubmit="return confirm('Удалить все записи?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger">🗑 Удалить все</button>
+            </form>
+        </div>
+    </div>
+
+    {% if grouped %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm table-hover align-middle">
+                <thead class="table-light text-center">
+                    <tr>
+                        <th>Сотрудник</th>
+                        <th>Должность</th>
+                        <th>Отдел</th>
+                        <th>Даты</th>
+                        <th>Время</th>
+                        <th>Часы</th>
+                        <th>ХТК</th>
+                        <th>Обоснование</th>
+                        <th>Начальник участка</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for employee_id, data in grouped.items %}
+                        <tr>
+                            <td>{{ data.name }}</td>
+                            <td>{{ data.position }}</td>
+                            <td>{{ data.department }}</td>
+                            <td>
+                                {% for d in data.dates %}
+                                    {{ d }}<br>
+                                {% endfor %}
+                            </td>
+                            <td class="text-center">{{ data.start_time }} – {{ data.end_time }}</td>
+                            <td class="text-center">{{ data.hours }}</td>
+                            <td class="text-center">
+                                {% if data.is_xtk %}✅{% else %}—{% endif %}
+                            </td>
+                            <td>{{ data.justification }}</td>
+                            <td>{{ data.manager }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-info text-center">Нет выбранных сотрудников.</div>
+    {% endif %}
+</div>
+
+<style>
+.table-row-clickable {
+    cursor: pointer;
+}
+.table-row-clickable:hover {
+    background-color: #f1f1f1;
+}
+</style>
+{% endblock %}

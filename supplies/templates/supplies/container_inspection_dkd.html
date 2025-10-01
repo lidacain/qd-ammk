@@ -1,0 +1,589 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% block title %}Осмотр контейнеров{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4">
+    <h2>Пост осмотра контейнеров</h2>
+
+    {% if messages %}
+        <div class="alert alert-success">
+            {% for message in messages %}
+                {{ message }}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <!-- Номер контейнера -->
+        <div class="mb-3">
+            <label class="form-label">Номер контейнера <span style="color: red">*</span></label>
+            <input type="text" name="container_number" class="form-control" placeholder="Введите номер контейнера" required>
+        </div>
+
+        <!-- Фото контейнера -->
+        <div class="mb-3 position-relative">
+            <label class="form-label">Фото контейнера <span style="color: red">*</span></label>
+
+            <!-- Скрытый input -->
+            <input type="file" name="container_photos" id="container_photos"
+                   class="form-control"
+                   multiple readonly
+                   style="opacity: 0; pointer-events: none; position: absolute; z-index: 2; height: 100%; width: 100%; top: 0; left: 0;">
+
+            <!-- Отображение состояния -->
+            <div id="container_photos_display" class="form-control bg-light fw-bold" style="z-index: 1;">
+                📷 Файлы не выбраны
+            </div>
+
+            <!-- Кнопка камеры -->
+            <button type="button" class="btn btn-primary mt-2"
+                    onclick="openCamera('container_photos', 'container_photos_preview')">
+                📷 Сделать фото
+            </button>
+
+            <!-- Превью -->
+            <div id="container_photos_preview" class="d-flex flex-wrap mt-2 gap-2"></div>
+        </div>
+
+        <!-- Есть ли дефект -->
+        <div class="mb-3">
+            <label class="form-label">Есть ли дефект? <span style="color: red">*</span></label><br>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="has_defect" id="defect_yes" value="yes">
+                <label class="form-check-label" for="defect_yes">Да</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="has_defect" id="defect_no" value="no">
+                <label class="form-check-label" for="defect_no">Нет</label>
+            </div>
+        </div>
+
+        <!-- Описание -->
+        <div class="mb-3">
+            <label class="form-label">Описание состояния контейнера</label>
+            <textarea name="description" rows="4" class="form-control" placeholder="Введите описание (если есть)"></textarea>
+        </div>
+
+        <!-- Скрытое поле таймера -->
+        <input type="hidden" name="inspection_duration_seconds" id="inspection_duration_seconds">
+
+        <!-- Кнопка отправки -->
+        <button type="submit" class="btn btn-success w-100 mt-5 mb-5">✅ Завершить и сохранить</button>
+    </form>
+</div>
+<script>
+// ✅ JS-аналог compress_uploaded_image
+async function compressDataURLToFile(dataURL, {
+  quality = 0.6,
+  maxWidth = 1600,
+  filename = `photo_${new Date().toISOString().replace(/[:.]/g,'-')}.jpg`
+} = {}) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.naturalWidth);
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (!blob) return reject(new Error('Compression failed'));
+        resolve(new File([blob], filename, { type: 'image/jpeg' }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    img.src = dataURL;
+  });
+}
+</script>
+
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        setupCamera(); // 📸 активация логики камеры
+    });
+
+function setupCamera() {
+    const isMobileDevice = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isMobileDevice()) {
+        // 📱 Мобильная версия: нативная камера
+        window.openCamera = function (inputId, previewId) {
+            window.continueCaptureLoop = true;
+            const input = document.getElementById(inputId);
+            const preview = document.getElementById(previewId);
+            if (!input || !preview) return;
+
+            input.setAttribute("accept", "image/*");
+            input.setAttribute("capture", "environment"); // открыть заднюю камеру
+
+            input.onchange = function () {
+                if (!input.files || input.files.length === 0) {
+                    window.continueCaptureLoop = false; // ❌ пользователь нажал "Отмена"
+                    return;
+                }
+                const dt = new DataTransfer();
+
+                const existingImages = preview.querySelectorAll("img[data-file]");
+                let promises = [];
+
+                // 🔁 1. Восстановим ранее добавленные изображения (из предпросмотра)
+                existingImages.forEach(img => {
+                    const base64 = img.src;
+                    const filename = img.getAttribute("data-file");
+
+                    const p = fetch(base64)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            const file = new File([blob], filename, { type: blob.type });
+                            dt.items.add(file);
+                        });
+
+                    promises.push(p);
+                });
+
+                // 📸 2. Новые фото с камеры
+                const newFiles = Array.from(input.files);
+
+                newFiles.forEach(file => {
+                    const reader = new FileReader();
+
+                    reader.onload = function (e) {
+                        const dataURL = e.target.result;
+                        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+                        const filename = `photo_${timestamp}.jpg`;
+
+                        // ⬇️ СЖАТИЕ
+                        compressDataURLToFile(dataURL, { quality: 0.6, maxWidth: 1600, filename })
+                          .then((compressedFile) => {
+                            const imageURL = URL.createObjectURL(compressedFile);
+
+                            // ... инициализация карусели как у тебя было ...
+
+                            // ➕ кладём СЖАТЫЙ файл
+                            preview.carouselData.push({ file: compressedFile, url: imageURL });
+                            preview.currentIndex = preview.carouselData.length - 1;
+                            preview.updateCarousel();
+
+                            // 🗂️ пересобираем input.files только из сжатых файлов
+                            const dt2 = new DataTransfer();
+                            preview.carouselData.forEach(item => dt2.items.add(item.file));
+                            input.files = dt2.files;
+
+                            // 🔄 обновление индикатора количества (как у тебя было)
+                            if (input.id === "body_photos") {
+                              const display = document.getElementById("body_photos_display");
+                              if (display) display.textContent = input.files.length > 0 ? `📸 Загружено фото: ${input.files.length}` : "📷 Файлы не выбраны";
+                            } else if (input.id.startsWith("defect_photo_input_")) {
+                              const idx = input.id.split("_").pop();
+                              const display = document.getElementById(`defect_photo_display_${idx}`);
+                              if (display) display.textContent = input.files.length > 0 ? `📸 Загружено фото: ${input.files.length}` : "📷 Файлы не выбраны";
+                            }
+                          })
+                          .catch(err => {
+                            console.error('Compression error:', err);
+                            alert('Не удалось сжать фото. Попробуйте ещё раз.');
+                          });
+
+                        // 🔁 Инициализируем карусель, если ещё не создана
+                        if (!preview.dataset.carouselInitialized) {
+                            preview.dataset.carouselInitialized = "true";
+                            preview.carouselData = [];
+                            preview.currentIndex = 0;
+
+                            preview.innerHTML = `
+                                <div class="carousel-wrapper d-flex flex-column align-items-center">
+                                    <div class="carousel-img-container position-relative" style="position: relative;">
+                                        <img class="carousel-img img-thumbnail mb-2"
+                                             style="max-width:300px; border-radius:5px; object-fit:cover; width: 100%; position: relative; z-index: 1;">
+
+                                        <!-- Зоны навигации по краям изображения -->
+                                        <div class="carousel-left-zone"
+                                             style="position:absolute; top:0; bottom:0; left:0; width:50%; z-index:2;"></div>
+                                        <div class="carousel-right-zone"
+                                             style="position:absolute; top:0; bottom:0; right:0; width:50%; z-index:2;"></div>
+                                    </div>
+
+                                    <!-- 🔘 Кнопка удаления — под изображением -->
+                                    <button type="button" class="carousel-delete btn btn-danger btn-sm mt-2 mb-1">
+                                        Удалить
+                                    </button>
+
+                                    <!-- ⬅️➡️ Навигация -->
+                                    <div class="carousel-controls d-flex justify-content-between align-items-center mt-3 w-100" style="max-width:300px;">
+                                        <button type="button" class="carousel-prev btn btn-secondary btn-lg px-4">←</button>
+                                        <span class="carousel-counter fs-5">1 / 1</span>
+                                        <button type="button" class="carousel-next btn btn-secondary btn-lg px-4">→</button>
+                                    </div>
+                                </div>
+                            `;
+
+                            // 📌 Привязка локальных элементов
+                            const imgElement = preview.querySelector(".carousel-img");
+                            const deleteBtn = preview.querySelector(".carousel-delete");
+                            const prevBtn = preview.querySelector(".carousel-prev");
+                            const nextBtn = preview.querySelector(".carousel-next");
+                            const counter = preview.querySelector(".carousel-counter");
+
+                            // 📌 Функция обновления карусели
+                            function updateCarousel() {
+                                const data = preview.carouselData;
+                                if (data.length === 0) {
+                                    preview.innerHTML = "<p>Нет фото</p>";
+                                    preview.dataset.carouselInitialized = "";
+                                    preview.carouselData = null;
+                                    return;
+                                }
+
+                                const current = data[preview.currentIndex];
+                                imgElement.src = current.url;
+                                counter.textContent = `${preview.currentIndex + 1} / ${data.length}`;
+                            }
+
+                            // 🗑️ Удалить фото
+                            deleteBtn.onclick = () => {
+                                preview.carouselData.splice(preview.currentIndex, 1);
+                                if (preview.currentIndex >= preview.carouselData.length) {
+                                    preview.currentIndex = preview.carouselData.length - 1;
+                                }
+                                updateCarousel();
+
+                                const dt = new DataTransfer();
+                                preview.carouselData.forEach(item => dt.items.add(item.file));
+                                input.files = dt.files;
+
+                                // 🔄 Специальная обработка только для контейнера
+                                if (input.id === "container_photos") {
+                                    const display = document.getElementById("container_photos_display");
+                                    if (display) {
+                                        const count = input.files.length;
+                                        display.textContent = count > 0
+                                            ? `📸 Загружено фото: ${count}`
+                                            : "📷 Файлы не выбраны";
+                                    }
+                                }
+                            };
+
+                            prevBtn.onclick = () => {
+                                if (preview.currentIndex > 0) {
+                                    preview.currentIndex--;
+                                    updateCarousel();
+                                }
+                            };
+
+                            nextBtn.onclick = () => {
+                                if (preview.currentIndex < preview.carouselData.length - 1) {
+                                    preview.currentIndex++;
+                                    updateCarousel();
+                                }
+                            };
+
+                            preview.updateCarousel = updateCarousel;
+                            const leftZone = preview.querySelector(".carousel-left-zone");
+                            const rightZone = preview.querySelector(".carousel-right-zone");
+
+                            leftZone.addEventListener("click", () => {
+                                if (preview.currentIndex > 0) {
+                                    preview.currentIndex--;
+                                    preview.updateCarousel();
+                                }
+                            });
+
+                            rightZone.addEventListener("click", () => {
+                                if (preview.currentIndex < preview.carouselData.length - 1) {
+                                    preview.currentIndex++;
+                                    preview.updateCarousel();
+                                }
+                            });
+                        }
+
+                        // ➕ Добавляем новое изображение
+                        preview.carouselData.push({ file: renamedFile, url: imageURL });
+                        preview.currentIndex = preview.carouselData.length - 1;
+                        preview.updateCarousel();
+
+                        // 🗂️ Обновляем input.files
+                        const dt = new DataTransfer();
+                        preview.carouselData.forEach(item => dt.items.add(item.file));
+                        input.files = dt.files;
+
+                        // 🔄 Специальная обработка только для кузова и дефекта
+                        if (input.id === "body_photos") {
+                            const display = document.getElementById("body_photos_display");
+                            if (display) {
+                                const count = input.files.length;
+                                display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+                            }
+                        } else if (input.id.startsWith("defect_photo_input_")) {
+                            const index = input.id.split("_").pop(); // получаем индекс из id
+                            const display = document.getElementById(`defect_photo_display_${index}`);
+                            if (display) {
+                                const count = input.files.length;
+                                display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+                            }
+                        }
+                    };
+
+                    reader.readAsDataURL(file);
+                });
+
+
+                // ⏳ Объединение после всех fetch
+                Promise.all(promises).then(() => {
+                    input.files = dt.files;
+                    // 🔄 Специальная обработка только для контейнера
+                    if (input.id === "container_photos") {
+                        const display = document.getElementById("container_photos_display");
+                        if (display) {
+                            const count = input.files.length;
+                            display.textContent = count > 0
+                                ? `📸 Загружено фото: ${count}`
+                                : "📷 Файлы не выбраны";
+                        }
+                    }
+                });
+            };
+
+            input.click();
+        };
+
+        // Вспомогательная функция для преобразования base64 в Blob
+        function dataURLToBlob(dataurl) {
+            const arr = dataurl.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], { type: mime });
+        };
+
+
+    } else {
+        // 💻 Десктопная версия: модальное окно
+        let modal = document.createElement("div");
+        modal.id = "camera_modal";
+        modal.style.display = "none";
+        modal.style.position = "fixed";
+        modal.style.top = "0";
+        modal.style.left = "0";
+        modal.style.width = "100%";
+        modal.style.height = "100%";
+        modal.style.background = "rgba(0,0,0,0.8)";
+        modal.style.justifyContent = "center";
+        modal.style.alignItems = "center";
+        modal.style.flexDirection = "column";
+        modal.innerHTML = `
+            <video id="camera_feed" autoplay playsinline style="width:90%; max-width:500px;"></video>
+            <button id="capture_button" class="btn btn-success mt-3">📸 Сделать фото</button>
+            <button id="close_camera" class="btn btn-danger mt-2">❌ Закрыть</button>
+        `;
+        document.body.appendChild(modal);
+
+        let video = document.getElementById("camera_feed");
+        let captureButton = document.getElementById("capture_button");
+        let closeButton = document.getElementById("close_camera");
+
+        let canvas = document.createElement("canvas");
+        let activeStream = null;
+        let activeInput = null;
+        let activePreview = null;
+
+        window.openCamera = function (inputId, previewId) {
+            activeInput = document.getElementById(inputId);
+            activePreview = document.getElementById(previewId);
+
+            if (!activeInput || !activePreview) {
+                console.error("❌ Ошибка: не найден input или preview");
+                return;
+            }
+
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+            }
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(function (stream) {
+                    activeStream = stream;
+                    video.srcObject = stream;
+                    modal.style.display = "flex";
+                    setTimeout(() => video.play(), 500);
+                })
+                .catch(function (error) {
+                    console.error("❌ Ошибка камеры:", error);
+                    alert(`Ошибка доступа к камере: ${error.message}`);
+                });
+
+            captureButton.onclick = function () {
+                if (!activeInput || !activePreview) return;
+
+                const ctx = canvas.getContext("2d");
+
+                // ⬇️ Масштаб: ширина ≤ 1600px, сохраняем пропорции
+                const MAX_W = 1600;
+                const vw = video.videoWidth || 0;
+                const vh = video.videoHeight || 0;
+                const scale = vw ? Math.min(1, MAX_W / vw) : 1;
+
+                canvas.width = Math.round(vw * scale);
+                canvas.height = Math.round(vh * scale);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // ⬇️ JPEG с качеством 0.6 (сжатие)
+                canvas.toBlob(function (blob) {
+                    if (!blob) {
+                        alert("Не удалось получить снимок.");
+                        return;
+                    }
+                    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+                    const file = new File([blob], `photo_${ts}.jpg`, { type: "image/jpeg" });
+
+                    // Собираем новый FileList
+                    const dt = new DataTransfer();
+                    if (!activeInput.multiple) {
+                        activeInput.value = "";
+                        while (activePreview.firstChild) activePreview.removeChild(activePreview.firstChild);
+                    } else {
+                        for (const f of activeInput.files) dt.items.add(f);
+                    }
+                    dt.items.add(file);
+                    activeInput.files = dt.files;
+
+                    // Превью + кнопка удаления
+                    const imgContainer = document.createElement("div");
+                    imgContainer.classList.add("d-flex", "flex-column", "align-items-center", "m-2");
+
+                    const img = document.createElement("img");
+                    img.src = URL.createObjectURL(file);
+                    img.classList.add("img-thumbnail");
+                    img.style.maxWidth = "300px";
+                    img.style.borderRadius = "5px";
+                    img.style.objectFit = "cover";
+
+                    const deleteBtn = document.createElement("button");
+                    deleteBtn.classList.add("btn", "btn-danger", "btn-sm", "mt-2");
+                    deleteBtn.textContent = "Удалить";
+                    deleteBtn.onclick = function () {
+                        imgContainer.remove();
+                        removeFileFromInput(activeInput, file);
+
+                        // Обновляем индикатор количества при удалении
+                        if (activeInput.id === "body_photos") {
+                            const display = document.getElementById("body_photos_display");
+                            if (display) {
+                                const count = activeInput.files.length;
+                                display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+                            }
+                        } else if (activeInput.id.startsWith("defect_photo_input_")) {
+                            const idx = activeInput.id.split("_").pop();
+                            const display = document.getElementById(`defect_photo_display_${idx}`);
+                            if (display) {
+                                const count = activeInput.files.length;
+                                display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+                            }
+                        }
+                    };
+
+                    imgContainer.appendChild(img);
+                    imgContainer.appendChild(deleteBtn);
+                    activePreview.appendChild(imgContainer);
+
+                    // Обновляем индикатор количества при добавлении
+                    if (activeInput.id === "body_photos") {
+                        const display = document.getElementById("body_photos_display");
+                        if (display) {
+                            const count = activeInput.files.length;
+                            display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+                        }
+                    } else if (activeInput.id.startsWith("defect_photo_input_")) {
+                        const idx = activeInput.id.split("_").pop();
+                        const display = document.getElementById(`defect_photo_display_${idx}`);
+                        if (display) {
+                            const count = activeInput.files.length;
+                            display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+                        }
+                    }
+
+                    // Закрываем камеру
+                    closeCamera();
+                }, "image/jpeg", 0.6);
+            };
+        };
+
+        function removeFileFromInput(inputElement, fileToRemove) {
+            let dataTransfer = new DataTransfer();
+            for (let i = 0; i < inputElement.files.length; i++) {
+                let file = inputElement.files[i];
+                if (file.name !== fileToRemove.name || file.size !== fileToRemove.size) {
+                    dataTransfer.items.add(file);
+                }
+            }
+            inputElement.files = dataTransfer.files;
+        }
+
+        function closeCamera() {
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+                activeStream = null;
+            }
+            video.srcObject = null;
+            modal.style.display = "none";
+        }
+
+        closeButton.addEventListener("click", closeCamera);
+        modal.addEventListener("click", function (event) {
+            if (event.target === modal) closeCamera();
+        });
+    }
+}
+
+
+function rebuildInputFiles(input, preview) {
+    const dt = new DataTransfer();
+
+    const images = preview.querySelectorAll("img[data-file]");
+    let promises = [];
+
+    images.forEach(img => {
+        const base64 = img.src;
+        const filename = img.getAttribute("data-file");
+
+        const p = fetch(base64)
+            .then(res => res.blob())
+            .then(blob => {
+                const file = new File([blob], filename, { type: blob.type });
+                dt.items.add(file);
+            });
+
+        promises.push(p);
+    });
+
+    Promise.all(promises).then(() => {
+        input.files = dt.files;
+        // 🔄 Специальная обработка только для кузова и дефекта
+        if (input.id === "body_photos") {
+            const display = document.getElementById("body_photos_display");
+            if (display) {
+                const count = input.files.length;
+                display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+            }
+        } else if (input.id.startsWith("defect_photo_input_")) {
+            const index = input.id.split("_").pop(); // получаем индекс из id
+            const display = document.getElementById(`defect_photo_display_${index}`);
+            if (display) {
+                const count = input.files.length;
+                display.textContent = count > 0 ? `📸 Загружено фото: ${count}` : "📷 Файлы не выбраны";
+            }
+        }
+    });
+}
+</script>
+{% endblock %}

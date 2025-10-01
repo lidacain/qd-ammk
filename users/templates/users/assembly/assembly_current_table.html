@@ -1,0 +1,68 @@
+{% extends "users/base.html" %}
+{% block title %}Пост текущего контроля{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <a href="{% url 'assembly_workshop_dashboard' %}" class="btn btn-outline-secondary mb-4">← Назад</a>
+    <h3 class="mb-4 text-center">Таблица осмотров — Пост момента затяжек</h3>
+
+    <div style="overflow-x: auto; overflow-y: auto; max-height: 80vh; width: 100%; border: 1px solid #dee2e6;">
+        <table class="table table-bordered table-hover table-striped align-middle w-100" style="min-width: 1200px;">
+            <thead class="table-dark text-center">
+                <tr>
+                    <th>VIN</th>
+                    <th>Дата</th>
+                    <th>Контроллер</th>
+                    <th>Модификация</th>
+                    <th>Узел</th>
+                    <th>Моменты затяжки</th>
+                    <th>Тип дефекта</th>
+                    <th>Кол-во</th>
+                    <th>Фото</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in records %}
+                    <tr class="{% if row.has_defect %}table-danger{% else %}table-success{% endif %}">
+                        <td>{{ row.vin }}</td>
+                        <td>{{ row.date|date:"d.m.Y H:i" }}</td>
+                        <td>{{ row.controller }}</td>
+                        <td>{{ row.modification }}</td>
+                        <td>{{ row.assembly_part }}</td>
+                        <td>{{ row.torque_values|join:", " }}</td>
+                        <td>{{ row.defect_type }}</td>
+                        <td>{{ row.quantity }}</td>
+                        <td>
+                            {% with row.photos|length as photo_count %}
+                                <div style="display: grid; gap: 4px;
+                                     grid-template-columns:
+                                     {% if photo_count <= 2 %} repeat(1, 1fr)
+                                     {% elif photo_count <= 6 %} repeat(2, 1fr)
+                                     {% else %} repeat(3, 1fr)
+                                     {% endif %};
+                                     ">
+                                    {% for img in row.photos %}
+                                        <img src="{{ img }}" class="clickable-img" width="60"
+                                             onclick="openModal(
+                                                 [{% for i in row.photos %}'{{ i }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+                                                 {{ forloop.counter0 }}
+                                             )">
+                                    {% endfor %}
+                                </div>
+                            {% endwith %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Модальное окно для фото -->
+<div id="image-modal" class="modal" style="display: none;">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <img id="modal-img" class="modal-content">
+    <button id="prev-btn" class="nav-btn left" onclick="showPrev()">&#10094;</button>
+    <button id="next-btn" class="nav-btn right" onclick="showNext()">&#10095;</button>
+</div>
+{% endblock %}

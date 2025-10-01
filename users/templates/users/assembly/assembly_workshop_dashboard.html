@@ -1,0 +1,144 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% block title %}Панель постов{% endblock %}
+
+{% block content %}
+<style>
+    .badge-count {
+        font-size: 0.65rem;
+        line-height: 1.1;
+        text-align: center;
+        padding: 0.3rem 0.6rem;
+        border-radius: 0.5rem;
+        font-weight: 500;
+        min-width: 90px;
+        white-space: nowrap;
+    }
+
+    .badge-count strong {
+        font-size: 0.9rem;
+        display: block;
+        margin-bottom: 0;
+    }
+
+    .badge-count span {
+        line-height: 1;
+        display: block;
+        margin-top: -7px;
+    }
+
+    .badge-vin {
+        background-color: #e6f4ea;
+        color: #206a2d;
+    }
+
+    .badge-defect {
+        background-color: #fce8e6;
+        color: #a83a32;
+    }
+
+    .card {
+        background-color: rgba(255, 255, 255, 0.85); /* Белый с прозрачностью */
+        border: none;
+        border-radius: 12px;
+        backdrop-filter: blur(4px); /* мягкое размытие фона */
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        transition: transform 0.2s ease;
+    }
+
+    .card:hover {
+        transform: translateY(-4px); /* лёгкий ховер-эффект */
+    }
+
+    .card-title-box {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+
+    .card-title-box .card-title {
+        flex-grow: 1;
+        margin: 0 0.5rem;
+        font-size: 1.1rem;
+    }
+
+    .section-header {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #111;
+        text-transform: uppercase;
+        background-color: rgba(255, 255, 255, 0.85);
+        padding: 14px 20px;
+        border-radius: 12px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        backdrop-filter: blur(4px);
+
+        /* ✨ ВАЖНО: добавим отступы сверху и снизу */
+        margin-top: 3rem;
+        margin-bottom: 2rem;
+    }
+</style>
+
+<div class="container py-4">
+
+    <div class="mb-3">
+        <a href="{% url 'master_dashboard' %}" class="btn btn-light">
+            ← Назад
+        </a>
+    </div>
+
+    <div class="text-center mb-5">
+        <a href="{% url 'assembly_general_report' %}" class="btn btn-light btn-lg shadow w-100 fw-bold" style="max-width: 1200px; margin: 0 auto;">
+            SUMMARY
+        </a>
+    </div>
+
+    {% for area, posts in grouped_posts.items %}
+        <div class="section-header">{{ area }}</div>
+
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            {% for post in posts %}
+            <div class="col">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+
+                        <div class="card-title-box">
+                            <div class="badge-count badge-vin">
+                                <strong>{{ post.today_vins }}</strong><br>
+                                <span class="fw-light">Осм. кузовов</span>
+                            </div>
+
+                            <h5 class="card-title">{{ post.title }}</h5>
+
+                            <div class="badge-count badge-defect">
+                                <strong>{{ post.today_entries }}</strong><br>
+                                <span class="fw-light">Дефектов</span>
+                            </div>
+                        </div>
+
+                        <a href="{{ post.report_url }}" class="btn btn-dark w-100 my-2">
+                            <i class="bi bi-eye-fill me-2"></i>Отчёт
+                        </a>
+                        <a href="{{ post.table_url }}" class="btn btn-primary w-100 my-2">
+                            <i class="bi bi-table me-2"></i>Таблица
+                        </a>
+<!--                        <a href="{{ post.export_url }}" class="btn btn-success w-100 my-2">-->
+<!--                            <i class="bi bi-file-earmark-arrow-down-fill me-2"></i>Export-->
+<!--                        </a>-->
+
+                        {% if request.user.role == "head_area" and post.manual_entry_url %}
+                            <a href="{{ post.manual_entry_url }}" class="btn btn-light w-100 my-2">
+                                <i class="bi bi-plus-circle-fill me-2"></i>Внести
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,835 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% block title %}Трассировка VIN{% endblock %}
+
+{% block content %}
+<style>
+  /* === Override base paddings/margins to make full-bleed === */
+  :root {}
+  body .container, body .container-fluid, body .container-xl, body .container-lg, body .container-md, body .container-sm { padding-left: 0 !important; padding-right: 0 !important; }
+  .content, .content-wrapper, .main-content, .page-content, .page-container { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+  header + .container, header + .container-fluid { padding-left: 0 !important; padding-right: 0 !important; }
+  html, body { overflow-x: hidden; }
+  .full-bleed { position: relative; left: 50%; right: 50%; margin-left: -49vw; margin-right: -50vw; width: 100vw; box-sizing: border-box; padding-left: clamp(16px, 2vw, 28px); padding-right: clamp(28px, 3vw, 48px); padding-top: -8px; }
+  /* Лэйаут: слева VIN-панель, справа рабочая область */
+  .page-wrap { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+  .left-rail{ display:flex; flex-direction:column; gap:12px; position:sticky; top:24px; }
+  .sidebar { background: rgba(255,255,255,.9); border-radius: 12px; padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.12); backdrop-filter: blur(4px); height: calc(100vh - 240px); overflow: hidden; display: flex; flex-direction: column; }
+  .left-rail .btn { width: 100%; }
+  .grid-wrap{ min-height: calc(100vh - 120px); padding-right: 26px; }
+  .sidebar .search { margin-bottom: 10px; }
+  .sidebar input[type="text"]{ width:100%; border:1px solid #ddd; border-radius:10px; padding:10px 12px; outline:none; }
+  .sidebar .vin-list{ overflow:auto; border-top:1px dashed #ddd; margin-top:10px; padding-top:10px; }
+  .sidebar .vin-item{ display:block; padding:8px 10px; border-radius:8px; text-decoration:none; color:#111; }
+  .sidebar .vin-item:hover{ background:#f1f3f5; }
+  .sidebar .vin-item.active{ background:#111; color:#fff; }
+
+  /* VIN list: show model + 1C color under the VIN */
+  .sidebar .vin-item .vin-code{ font-weight:600; line-height:1.2; }
+  .sidebar .vin-item .vin-meta{ font-size:.8rem; opacity:.7; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* Рабочая сетка: 7 строк × 9 колонок */
+  .plant-grid { display:grid; grid-template-rows: repeat(7, minmax(72px, 1fr)); grid-template-columns: repeat(9, 1fr); gap: 8px; }
+  .cell { background: rgba(255,255,255,.85); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.12); border:none; padding: 6px 8px; display:flex; flex-direction:column; justify-content:center; text-align:center; backdrop-filter: blur(4px); }
+  .cell.label { font-weight:800; text-transform:uppercase; background: rgba(17,17,17,.35); color:#fff; border: 1.5px solid rgba(255,255,255,0.28); box-shadow: 0 4px 12px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,0.08); }
+  .title { font-size:0.95rem; font-weight:700; margin:0; }
+  .zone  { font-size:.75rem; opacity:.75; }
+  .status { margin-top:4px; font-size:.85rem; }
+  .badges { margin-top:4px; }
+  .badge-step { display:inline-block; border-radius:999px; padding:1px 6px; font-size:.7rem; border:1px solid rgba(0,0,0,.2); margin:0 2px; line-height:1.2; }
+  .last-at { font-size:.75rem; opacity:.7; margin-top:2px; }
+
+  .cell.ves-col{ background: rgba(13,202,240,0.12) !important; border: 1.5px solid rgba(13,202,240,0.55) !important; color:#fff; }
+  .cell.ves-col .title, .cell.ves-col .zone{ color:#fff; }
+  .cell.pdi-col{ background: rgba(255,193,7,0.12) !important; border: 1.5px solid rgba(255,193,7,0.55) !important; color:#fff; }
+  .cell.pdi-col .title, .cell.pdi-col .zone{ color:#fff; }
+
+  .bg-ok   { background:#198754 !important; color:#fff; }
+  .bg-def  { background:#dc3545 !important; color:#fff; }
+  .bg-miss { background:#6c757d !important; color:#fff; }
+  .bg-warn { background:#ffc107 !important; color:#111; }
+
+  a.cell-link{ text-decoration:none; color:inherit; display:block; height:100%; }
+
+  .header-bar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+  .download-excel-btn{ display:inline-block; background:#6c757d; color:#fff; font-size:1rem; font-weight:600; padding:10px 18px; border-radius:10px; border:none; box-shadow:0 4px 10px rgba(0,0,0,.1); text-decoration:none; }
+
+.vin-banner { display:flex; flex-direction:column; align-items:stretch; justify-content:center; padding: 2px 0; }
+.vin-banner .title { font-size: clamp(14px, 1.6vw, 24px); font-weight: 800; letter-spacing: .06em; margin: 0; text-align:center; }
+.vin-banner .trace-meta{ margin-top:4px; text-align:center; }
+.vin-banner .trace-meta .bm{ font-weight:700; font-size: clamp(12px, 1.4vw, 18px); }
+
+.status-strip{ margin-top:16px; }
+.status-row{ display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px; }
+.status-card{ background: rgba(255,255,255,.9); border-radius:12px; padding:12px; box-shadow:0 4px 12px rgba(0,0,0,.12); backdrop-filter: blur(4px);
+  display:flex; flex-direction:column; justify-content:center; min-height:64px;
+}
+.status-title{ font-weight:700; margin:0 0 6px 0; font-size:1rem; }
+.status-val{ font-size:1rem; }
+.status-sub{ font-size:.85rem; opacity:.75; margin-top:4px; }
+.status-card.small{ padding:6px 8px; }
+.status-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+.status-head{ min-height: 24px; }
+.status-body{ display:flex; flex-direction:column; justify-content:center; gap:2px; min-height: 40px; }
+.status-title{ font-weight:700; margin:0; font-size:0.95rem; }
+.status-main{ font-size:0.95rem; }
+.status-date{ font-size:.85rem; opacity:.75; }
+.vin-status-row{ margin-top:4px; }
+@media (max-width: 1400px){
+  .status-row{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+@media (max-width: 1100px){
+  .status-row{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 720px){
+  .status-row{ grid-template-columns: 1fr; }
+}
+
+.col-sep { grid-row: 1 / 8; grid-column: 8; justify-self: start; width: 10px; margin-left: -10px; border-radius: 6px; background: rgba(255,255,255,0.28); backdrop-filter: blur(2px); pointer-events: none; box-shadow: 0 0 0 1px rgba(255,255,255,0.25) inset; }
+  /* ===== Mobile (≤ 992px) adaptations ===== */
+  @media (max-width: 992px){
+    /* layout becomes single-column */
+    .page-wrap{ display:block; }
+    .grid-wrap{ padding-right: 0; }
+
+    /* hide heavy shadows & blur on mobile for perf */
+    .cell{ box-shadow: 0 2px 6px rgba(0,0,0,.08); backdrop-filter: none; }
+
+    /* sidebar turns into offcanvas drawer (force top stacking) */
+    .sidebar{ position: fixed; top:0; left:0; height:100vh; width:min(92vw, 360px); max-width: 92vw; transform: translateX(-100%); transition: transform .25s ease; z-index: 4000; border-radius:0; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 10px 30px rgba(0,0,0,.25); will-change: transform; }
+    .sidebar.open{ transform: translateX(0); }
+    .overlay{ position: fixed; inset: 0; background: rgba(0,0,0,.40); opacity: 0; visibility: hidden; transition: opacity .2s ease; z-index: 3990; }
+    .overlay.show{ opacity: 1; visibility: visible; }
+
+    /* keep grid on mobile (explicit order is defined in a later media-block) */
+    .plant-grid{ /* display stays grid; overridden below */ }
+    .cell{ margin-bottom: 8px; }
+
+    /* compact VIN banner header */
+    .vin-banner{ padding: 6px 0; }
+    .vin-banner .title{ letter-spacing: .04em; }
+
+    /* stack status cards vertically on mobile */
+    .status-row{ display:block; overflow: visible; }
+    .status-row .status-card{ min-width: 0; margin-bottom: 8px; }
+    .status-row .status-card:last-child{ margin-bottom: 0; }
+
+    /* make action buttons a bit tighter */
+    .download-excel-btn{ padding:8px 12px; font-size:.95rem; }
+  }
+
+
+/* Ensure main content is beneath offcanvas on mobile */
+.page-wrap, .grid-wrap, .plant-grid{ position: relative; z-index: 0; }
+
+/* --- Mobile-only explicit order via grid-areas --- */
+@media (max-width: 992px){
+  .plant-grid{
+    display: flex !important;
+    flex-direction: column;
+    gap: 8px;
+  }
+  /* сброс координат для мобильной сетки */
+  .plant-grid > .cell{ margin-bottom: 0; align-self: stretch; width: 100% !important; }
+
+  /* hide desktop-only vertical separator on mobile */
+  .col-sep{ display: none !important; }
+
+  /* safety: ensure cells don't keep desktop widths */
+  .plant-grid > .cell{ width: auto !important; max-width: 100% !important; }
+
+  /* hide decorative VES/PDI columns on mobile */
+  .cell.ves-col, .cell.pdi-col{ display: none !important; }
+
+  /* привязка классов к именованным областям */
+  .cell.m-vin{ grid-area: m-vin !important; }
+  .cell.m-vh-name{ grid-area: m-vh-name !important; }
+  .cell.m-per-osm-kuz{ grid-area: m-per-osm-kuz !important; }
+  .cell.m-vyg-kom{ grid-area: m-vyg-kom !important; }
+  .cell.m-osn-pri{ grid-area: m-osn-pri !important; }
+  .cell.m-trim-name{ grid-area: m-trim-name !important; }
+  .cell.m-trim-in{ grid-area: m-trim-in !important; }
+  .cell.m-moment-zat{ grid-area: m-moment-zat !important; }
+  .cell.m-chassis{ grid-area: m-chassis !important; }
+  .cell.m-final-trim{ grid-area: m-final-trim !important; }
+  .cell.m-fi-name{ grid-area: m-fi-name !important; }
+  .cell.m-gaps-and-drops{ grid-area: m-gaps-and-drops !important; }
+  .cell.m-exterior{ grid-area: m-exterior !important; }
+  .cell.m-interior{ grid-area: m-interior !important; }
+  .cell.m-trunk{ grid-area: m-trunk !important; }
+  .cell.m-motor{ grid-area: m-motor !important; }
+  .cell.m-functional{ grid-area: m-functional !important; }
+  .cell.m-test-line-name1{ grid-area: m-test-line-name1 !important; }
+  .cell.m-geom-koles{ grid-area: m-geom-koles !important; }
+  .cell.m-reg-svet-far{ grid-area: m-reg-svet-far !important; }
+  .cell.m-breaking-s{ grid-area: m-breaking-s !important; }
+  .cell.m-underbody{ grid-area: m-underbody !important; }
+  .cell.m-test-line-name2{ grid-area: m-test-line-name2 !important; }
+  .cell.m-adas{ grid-area: m-adas !important; }
+  .cell.m-avm{ grid-area: m-avm !important; }
+  .cell.m-shower-test{ grid-area: m-shower-test !important; }
+  .cell.m-ves-name{ grid-area: m-ves-name !important; }
+  .cell.m-ves-otdan{ grid-area: m-ves-otdan !important; }
+  .cell.m-ves-prinat{ grid-area: m-ves-prinat !important; }
+  .cell.m-pdi-name{ grid-area: m-pdi-name !important; }
+  .cell.m-uud-step1{ grid-area: m-uud-step1 !important; }
+  .cell.m-uud-step2{ grid-area: m-uud-step2 !important; }
+  .cell.m-uud-step3{ grid-area: m-uud-step3 !important; }
+  .cell.m-uud-step4{ grid-area: m-uud-step4 !important; }
+  .cell.m-final-name{ grid-area: m-final-name !important; }
+  .cell.m-diagnostic{ grid-area: m-diagnostic !important; }
+  .cell.m-test-track{ grid-area: m-test-track !important; }
+  .cell.m-documentation{ grid-area: m-documentation !important; }
+
+  /* Explicit mobile order using flexbox */
+  .cell.m-vin{ order: 1; }
+  .cell.m-vh-name{ order: 2; }
+  .cell.m-per-osm-kuz{ order: 3; }
+  .cell.m-vyg-kom{ order: 4; }
+  .cell.m-osn-pri{ order: 5; }
+  .cell.m-trim-name{ order: 6; }
+  .cell.m-trim-in{ order: 7; }
+  .cell.m-moment-zat{ order: 8; }
+  .cell.m-chassis{ order: 9; }
+  .cell.m-final-trim{ order: 10; }
+  .cell.m-fi-name{ order: 11; }
+  .cell.m-gaps-and-drops{ order: 12; }
+  .cell.m-exterior{ order: 13; }
+  .cell.m-interior{ order: 14; }
+  .cell.m-trunk{ order: 15; }
+  .cell.m-motor{ order: 16; }
+  .cell.m-functional{ order: 17; }
+  .cell.m-test-line-name1{ order: 18; }
+  .cell.m-geom-koles{ order: 19; }
+  .cell.m-reg-svet-far{ order: 20; }
+  .cell.m-breaking-s{ order: 21; }
+  .cell.m-underbody{ order: 22; }
+  .cell.m-test-line-name2{ order: 23; }
+  .cell.m-adas{ order: 24; }
+  .cell.m-avm{ order: 25; }
+  .cell.m-shower-test{ order: 26; }
+  .cell.m-ves-name{ order: 27; }
+  .cell.m-ves-otdan{ order: 28; }
+  .cell.m-ves-prinat{ order: 29; }
+  .cell.m-pdi-name{ order: 30; }
+  .cell.m-uud-step1{ order: 31; }
+  .cell.m-uud-step2{ order: 32; }
+  .cell.m-uud-step3{ order: 33; }
+  .cell.m-uud-step4{ order: 34; }
+  .cell.m-final-name{ order: 35; }
+  .cell.m-diagnostic{ order: 36; }
+  .cell.m-test-track{ order: 37; }
+  .cell.m-documentation{ order: 38; }
+}
+
+
+  /* Десктоп с узкой вкладкой: включаем горизонтальный скролл */
+  @media (min-width: 993px) and (max-width: 1439px){
+    .grid-wrap{
+      overflow-x: auto;               /* появляется горизонтальная прокрутка */
+      -webkit-overflow-scrolling: touch;
+    }
+    .plant-grid{
+      width: max-content;             /* грид больше контейнера, не ужимается */
+      grid-template-columns: repeat(9, 360px); /* фикс ширина колонок */
+      scroll-snap-type: x proximity;  /* удобный «прилип» при скролле */
+    }
+    .plant-grid > .cell{ scroll-snap-align: start; }
+  }
+
+  /* Очень широкие экраны: оставляем резиновую сетку (как сейчас) */
+  @media (min-width: 1440px){
+    .grid-wrap{ overflow: visible; }
+    .plant-grid{
+      width: 100%;
+      grid-template-columns: repeat(9, 1fr);
+    }
+  }
+
+/* --- Sequential step highlight (global #steps ticker) --- */
+.step-badge{
+  transition: transform .25s ease, box-shadow .25s ease;
+  will-change: transform;
+}
+@keyframes stepPulse {
+  0%   { transform: translateY(0) scale(1); }
+  50%  { transform: translateY(-2px) scale(1.5); }
+  100% { transform: translateY(0) scale(1); }
+}
+.step-badge.pulse{
+  animation: stepPulse 950ms ease-in-out;
+  box-shadow: 0 0 0 .25rem rgba(33,37,41,.08);
+}
+
+</style>
+
+<div class="container-fluid px-0 py-1 full-bleed">
+  <!-- Mobile VIN offcanvas (separate from desktop left-rail) -->
+  <aside class="sidebar d-md-none" id="vinSidebarMob" aria-label="VIN список (моб)" aria-hidden="true">
+    <div class="search"><input type="text" id="vinSearchMob" placeholder="Поиск VIN..."></div>
+    <div class="vin-list" id="vinListMob">
+      {% if vin_items %}
+        {% for it in vin_items %}
+          <a class="vin-item {% if it.vin == vin %}active{% endif %}" href="{% url 'vin_tracking_view' it.vin %}">
+            <div class="vin-code">{{ it.vin }}</div>
+            {% if it.model or it.color_1c %}
+              <div class="vin-meta">{{ it.model }}{% if it.color_1c %} • {{ it.color_1c }}{% endif %}</div>
+            {% endif %}
+          </a>
+        {% endfor %}
+      {% else %}
+        {% for v in vins %}
+          <a class="vin-item {% if v == vin %}active{% endif %}" href="{% url 'vin_tracking_view' v %}">
+            <div class="vin-code">{{ v }}</div>
+            {% if trace_map and trace_map.vin_rk and trace_map.vin_rk == v %}
+              <div class="vin-meta">{{ trace_map.model }}{% if trace_map.color_1c %} • {{ trace_map.color_1c }}{% endif %}</div>
+            {% elif v == vin and trace %}
+              <div class="vin-meta">{{ trace.model }} • {{ trace.color_1c }}</div>
+            {% endif %}
+          </a>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </aside>
+  <div id="vinOverlayMob" class="overlay d-md-none" aria-hidden="true"></div>
+  <div class="page-wrap">
+    <!-- ===== Левая колонка: кнопки + сайдбар ===== -->
+    <div class="left-rail d-none d-md-flex">
+      <a href="{% url 'vin_tracking_select' %}" class="btn btn-light">← Назад</a>
+      <a href="{% url 'export_vin_excel' vin=vin %}" target="_blank" class="download-excel-btn text-center"><i class="bi bi-download me-1"></i>Excel</a>
+
+      <!-- ===== Сайдбар VIN ===== -->
+      <aside class="sidebar" id="vinSidebar" aria-label="VIN список" aria-hidden="true">
+        <div class="search"><input type="text" id="vinSearch" placeholder="Поиск VIN..."></div>
+        <div class="vin-list" id="vinList">
+      {% if vin_items %}
+        {% for it in vin_items %}
+          <a class="vin-item {% if it.vin == vin %}active{% endif %}" href="{% url 'vin_tracking_view' it.vin %}">
+            <div class="vin-code">{{ it.vin }}</div>
+            {% if it.model or it.color_1c %}
+              <div class="vin-meta">{{ it.model }}{% if it.color_1c %} • {{ it.color_1c }}{% endif %}</div>
+            {% endif %}
+          </a>
+        {% endfor %}
+      {% else %}
+        {% for v in vins %}
+          <a class="vin-item {% if v == vin %}active{% endif %}" href="{% url 'vin_tracking_view' v %}">
+            <div class="vin-code">{{ v }}</div>
+            {% if trace_map and trace_map.vin_rk and trace_map.vin_rk == v %}
+              <div class="vin-meta">{{ trace_map.model }}{% if trace_map.color_1c %} • {{ trace_map.color_1c }}{% endif %}</div>
+            {% elif v == vin and trace %}
+              <div class="vin-meta">{{ trace.model }} • {{ trace.color_1c }}</div>
+            {% endif %}
+          </a>
+        {% endfor %}
+      {% endif %}
+        </div>
+      </aside>
+      <div id="vinOverlay" class="overlay d-md-none" aria-hidden="true"></div>
+    </div>
+
+    <!-- ===== 7×9 рабочая сетка ===== -->
+    <section class="grid-wrap">
+      <!-- Mobile controls -->
+      <div class="header-bar d-flex align-items-center gap-2 d-md-none" style="margin-bottom:10px;">
+        <a href="{% url 'vin_tracking_select' %}" class="btn btn-light">← Назад</a>
+        <button id="openVinBtn" type="button" class="btn btn-dark">VIN</button>
+        <a href="{% url 'export_vin_excel' vin=vin %}" target="_blank" class="btn btn-secondary">Excel</a>
+      </div>
+      <div class="plant-grid">
+        <div class="cell vin-banner m-vin" style="grid-row:1;grid-column:1/8;">
+<div class="title">{{ vin }}</div>
+{% if trace %}
+  <div class="trace-meta">
+    <div class="cc">{{ trace.brand }} / {{ trace.model }} / {{ trace.config_code }} / {{ trace.body_color }} / {{ trace.color_1c }}</div>
+  </div>
+{% endif %}
+
+<!-- ===== Верхняя панель статусов: 3 в ряд в VIN-баннере ===== -->
+<div class="status-row vin-status-row">
+  <!-- 1) Последний пост -->
+  <div class="status-card small">
+    <div class="status-head">
+      <div class="status-title">Последний пост</div>
+    </div>
+    <div class="status-body">
+      {% if last_step_post %}
+        <strong>{{ last_step_post.post }}</strong>
+        <div class="status-date">{{ last_step_post.dt|date:"d.m.Y H:i" }}</div>
+      {% else %}
+        —
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 2) Статус УУД -->
+  <div class="status-card small">
+    <div class="status-head">
+      <div class="status-title">Статус УУД</div>
+      {% if is_on_uud %}
+        <span class="badge-step bg-warn">На УУД</span>
+      {% else %}
+        <span class="badge-step bg-ok">Не на УУД</span>
+      {% endif %}
+    </div>
+    <div class="status-body">
+      {% if uud_latest_name %}<div class="status-sub">{{ uud_latest_name }}</div>{% endif %}
+      {% if uud_latest_time %}<div class="status-date">{{ uud_latest_time|date:"d.m.Y H:i" }}</div>{% endif %}
+    </div>
+  </div>
+
+  <!-- 3) Статус VES -->
+  <div class="status-card small">
+    <div class="status-head">
+      <div class="status-title">Статус VES</div>
+      {% if is_on_ves %}
+        <span class="badge-step bg-warn">На VES</span>
+      {% else %}
+        <span class="badge-step bg-ok">Не на VES</span>
+      {% endif %}
+    </div>
+    <div class="status-body">
+      {% if ves_latest_name %}<div class="status-sub">{{ ves_latest_name }}</div>{% endif %}
+      {% if ves_latest_time %}<div class="status-date">{{ ves_latest_time|date:"d.m.Y H:i" }}</div>{% endif %}
+    </div>
+  </div>
+
+    <!-- 4) Статус СГП -->
+    <div class="status-card small">
+      <div class="status-head">
+        <div class="status-title">Статус СГП</div>
+        {% if has_uud_impossible %}
+          <span class="badge-step bg-miss">На СГП с ДЦ — ремонтом</span>
+        {% elif is_on_sgp %}
+          <span class="badge-step bg-ok">На СГП</span>
+        {% else %}
+          <span class="badge-step bg-warn">Не на СГП</span>
+        {% endif %}
+      </div>
+      <div class="status-body">
+        {% if sgp_latest_time %}<div class="status-date">{{ sgp_latest_time|date:"d.m.Y H:i" }}</div>{% endif %}
+      </div>
+    </div>
+</div>
+        </div>
+        {# ========================= Ряд 1 ========================= #}
+        <div class="col-sep"></div>
+        <div class="cell ves-col m-ves-name" style="grid-row:1;grid-column:8;">VES</div>
+        <div class="cell label pdi-col m-pdi-name" style="grid-row:1;grid-column:9;">PDI</div>
+
+        {# ========================= Ряд 2 ========================= #}
+        <div class="cell label m-vh-name" style="grid-row:2;grid-column:1;">Входной контроль</div>
+
+        <!-- 2.2 — Пост первичного осмотра кузовов -->
+        <div class="cell m-per-osm-kuz" style="grid-row:2;grid-column:2;">
+          {% for item in post_statuses %}
+            {% if item.post == "Зона первичного осмотра кузовов, DKD" %}
+              <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                <div class="title">{{ item.post }}</div>
+                <div class="zone">{{ item.zone }}</div>
+                <div class="status">
+                  {% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>
+                  {% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>
+                  {% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}
+                </div>
+                {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+              </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 2.3 — Пост приёмки комплектующих -->
+        <div class="cell m-vyg-kom" style="grid-row:2;grid-column:3;">
+          {% for item in post_statuses %}
+            {% if item.post == "Зона выгрузки комплектующих, DKD" %}
+              <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                <div class="title">{{ item.post }}</div>
+                <div class="zone">{{ item.zone }}</div>
+                <div class="status">
+                  {% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>
+                  {% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>
+                  {% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}
+                </div>
+                {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+              </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 2.4 — Пост основной приёмки -->
+        <div class="cell m-osn-pri" style="grid-row:2;grid-column:4;">
+          {% for item in post_statuses %}
+            {% if item.post == "Зона основной приемки DKD" %}
+              <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                <div class="title">{{ item.post }}</div>
+                <div class="zone">{{ item.zone }}</div>
+                <div class="status">
+                  {% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>
+                  {% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>
+                  {% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}
+                </div>
+                {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+              </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 2.8 — VES Отдан -->
+        <div class="cell m-ves-otdan" style="grid-row:2;grid-column:8;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "VES" %}
+              {% for item in posts %}
+                {% if item.post == "VES — Отдан" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">
+                      {% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>
+                      {% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}
+                    </div>
+                    {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 2.9 — УУД шаг 1 -->
+        <div class="cell m-uud-step1" style="grid-row:2;grid-column:9;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "УУД" %}
+              {% for item in posts %}
+                {% if item.post == "УУД — Шаг 1 (отдана на УУД)" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>
+                    {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        {# ========================= Ряд 3 ========================= #}
+        <div class="cell label m-trim-name" style="grid-row:3;grid-column:1;">TRIM</div>
+
+        <!-- 3.2 TRIM IN -->
+        <div class="cell m-trim-in" style="grid-row:3;grid-column:2;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "Текущий контроль" %}
+              {% for item in posts %}
+                {% if item.post == "TRIM IN" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>
+                    {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 3.3 Момент затяжек -->
+        <div class="cell m-moment-zat" style="grid-row:3;grid-column:3;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "Текущий контроль" %}
+              {% for item in posts %}
+                {% if item.post == "Пост момента затяжек" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">
+                      {% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>
+                      {% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>
+                      {% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}
+                    </div>
+                    {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 3.4 Chassis -->
+        <div class="cell m-chassis" style="grid-row:3;grid-column:4;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "Текущий контроль" %}
+              {% for item in posts %}
+                {% if item.post == "Chassis" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">
+                      {% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>
+                      {% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>
+                      {% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}
+                    </div>
+                    {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 3.5 Финал текущий контроль -->
+        <div class="cell m-final-trim" style="grid-row:3;grid-column:5;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "Текущий контроль" %}
+              {% for item in posts %}
+                {% if item.post == "Финал текущий контроль" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">
+                      {% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>
+                      {% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>
+                      {% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}
+                    </div>
+                    {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 3.8 VES Принят -->
+        <div class="cell m-ves-prinat" style="grid-row:3;grid-column:8;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "VES" %}
+              {% for item in posts %}
+                {% if item.post == "VES — Принят" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>
+                    {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- 3.9 УУД шаг 2 -->
+        <div class="cell m-uud-step2" style="grid-row:3;grid-column:9;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "УУД" %}
+              {% for item in posts %}
+                {% if item.post == "УУД — Шаг 2 (принята на УУД)" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>
+                    {% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}
+
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        {# ========================= Ряд 4 ========================= #}
+        <div class="cell label m-fi-name" style="grid-row:4;grid-column:1;">Первая инспекция</div>
+        <!-- 4.2 Зазоры и перепады -->
+        <div class="cell m-gaps-and-drops" style="grid-row:4;grid-column:2;">{% for area, posts in grouped_statuses.items %}{% if area == "Первая инспекция" %}{% for item in posts %}{% if item.post == "Зазоры и перепады" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <!-- 4.3 Экстерьер -->
+        <div class="cell m-exterior" style="grid-row:4;grid-column:3;">{% for area, posts in grouped_statuses.items %}{% if area == "Первая инспекция" %}{% for item in posts %}{% if item.post == "Экстерьер" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <!-- 4.4 Интерьер -->
+        <div class="cell m-interior" style="grid-row:4;grid-column:4;">{% for area, posts in grouped_statuses.items %}{% if area == "Первая инспекция" %}{% for item in posts %}{% if item.post == "Интерьер" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <!-- 4.5 Багажник -->
+        <div class="cell m-trunk" style="grid-row:4;grid-column:5;">{% for area, posts in grouped_statuses.items %}{% if area == "Первая инспекция" %}{% for item in posts %}{% if item.post == "Багажник" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <!-- 4.6 Мотор -->
+        <div class="cell m-motor" style="grid-row:4;grid-column:6;">{% for area, posts in grouped_statuses.items %}{% if area == "Первая инспекция" %}{% for item in posts %}{% if item.post == "Мотор" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <!-- 4.7 Функционал -->
+        <div class="cell m-functional" style="grid-row:4;grid-column:7;">{% for area, posts in grouped_statuses.items %}{% if area == "Первая инспекция" %}{% for item in posts %}{% if item.post == "Функцонал" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <!-- 4.9 УУД шаг 3 -->
+        <div class="cell m-uud-step3" style="grid-row:4;grid-column:9;">{% for area, posts in grouped_statuses.items %}{% if area == "УУД" %}{% for item in posts %}{% if item.post == "УУД — Шаг 3 (отдана на линию)" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+
+        {# ========================= Ряд 5 ========================= #}
+        <div class="cell label m-test-line-name1" style="grid-row:5;grid-column:1;">Test line</div>
+        <div class="cell m-geom-koles" style="grid-row:5;grid-column:2;">{% for area, posts in grouped_statuses.items %}{% if area == "Тестовая линия" %}{% for item in posts %}{% if item.post == "Геометрия колес" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <div class="cell m-reg-svet-far" style="grid-row:5;grid-column:3;">{% for area, posts in grouped_statuses.items %}{% if area == "Тестовая линия" %}{% for item in posts %}{% if item.post == "Регулировка света фар и калибровка руля" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <div class="cell m-breaking-s" style="grid-row:5;grid-column:4;">{% for area, posts in grouped_statuses.items %}{% if area == "Тестовая линия" %}{% for item in posts %}{% if item.post == "Тормозная система" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <div class="cell m-underbody" style="grid-row:5;grid-column:5;">{% for area, posts in grouped_statuses.items %}{% if area == "Тестовая линия" %}{% for item in posts %}{% if item.post == "Underbody" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <!-- 5.9 УУД шаг 4 -->
+        <div class="cell m-uud-step4" style="grid-row:5;grid-column:9;">{% for area, posts in grouped_statuses.items %}{% if area == "УУД" %}{% for item in posts %}{% if item.post == "УУД — Шаг 4 (принята на линию)" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+
+        {# ========================= Ряд 6 ========================= #}
+        <div class="cell label m-test-line-name2" style="grid-row:6;grid-column:1;">Test line</div>
+        <div class="cell m-adas" style="grid-row:6;grid-column:2;">{% for area, posts in grouped_statuses.items %}{% if area == "Тестовая линия" %}{% for item in posts %}{% if item.post == "ADAS" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <div class="cell m-avm" style="grid-row:6;grid-column:3;">{% for area, posts in grouped_statuses.items %}{% if area == "Тестовая линия" %}{% for item in posts %}{% if item.post == "AVM" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <div class="cell m-shower-test" style="grid-row:6;grid-column:4;">{% for area, posts in grouped_statuses.items %}{% if area == "Тестовая линия" %}{% for item in posts %}{% if item.post == "Герметичность кузова" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+
+        {# ========================= Ряд 7 ========================= #}
+        <div class="cell label m-final-name" style="grid-row:7;grid-column:1;">Финал</div>
+        <div class="cell m-diagnostic" style="grid-row:7;grid-column:2;">{% for area, posts in grouped_statuses.items %}{% if area == "Финальная инспекция" %}{% for item in posts %}{% if item.post == "Диагностика" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <div class="cell m-test-track" style="grid-row:7;grid-column:3;">{% for area, posts in grouped_statuses.items %}{% if area == "Финальная инспекция" %}{% for item in posts %}{% if item.post == "Тест трек" %}<a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}"><div class="title">{{ item.post }}</div><div class="zone">{{ item.zone }}</div><div class="status">{% if item.status == 'ok' %}<span class="bg-ok badge-step">OK</span>{% elif item.status == 'defect' %}<span class="bg-def badge-step">DEF{% if item.grade %} {{ item.grade }}{% endif %}</span>{% else %}<span class="bg-miss badge-step">MISSING</span>{% endif %}</div>{% if item.steps %}<div class="badges">{% for s in item.steps %}<div class="d-flex justify-content-center gap-2 align-items-baseline"><span class="badge-step {% if s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span><span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span></div>{% endfor %}</div>{% endif %}</a>{% endif %}{% endfor %}{% endif %}{% endfor %}</div>
+        <div class="cell m-documentation" style="grid-row:7;grid-column:4;">
+          {% for area, posts in grouped_statuses.items %}
+            {% if area == "Финальная инспекция" %}
+              {% for item in posts %}
+                {% if item.post == "Документация" %}
+                  <a class="cell-link" href="{% url 'vin_post_detail' vin=vin post=item.post %}">
+                    <div class="title">{{ item.post }}</div>
+                    <div class="zone">{{ item.zone }}</div>
+                    <div class="status">
+                      {% if has_uud_impossible %}
+                        <span class="bg-miss badge-step">ДЦ — ремонт</span>
+                      {% elif item.status == 'ok' %}
+                        <span class="bg-ok badge-step">OK</span>
+                      {% else %}
+                        <span class="bg-miss badge-step">MISSING</span>
+                      {% endif %}
+                    </div>
+                    {% if item.steps %}
+                      <div class="badges">
+                        {% for s in item.steps %}
+                          <div class="d-flex justify-content-center gap-2 align-items-baseline">
+                            <span class="badge-step {% if has_uud_impossible %}bg-miss{% elif s.status == 'ok' %}bg-ok{% elif s.status == 'defect' %}bg-def{% endif %}">#{{ s.step }}</span>
+                            <span class="last-at">{{ s.dt|date:"d.m.Y H:i" }}</span>
+                          </div>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </a>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        {# Пропущенные ячейки остаются пустыми по ТЗ #}
+      </div>
+    </section>
+  </div>
+
+</div>
+
+<script>
+  // Фильтр VIN в сайдбаре
+  (function(){
+    const pairs = [
+      ['vinSearch','vinList'],
+      ['vinSearchMob','vinListMob']
+    ];
+    pairs.forEach(([inpId, listId])=>{
+      const input = document.getElementById(inpId);
+      const list  = document.getElementById(listId);
+      if(!input || !list) return;
+      input.addEventListener('input', function(){
+        const q = this.value.trim().toUpperCase();
+        for (const a of list.querySelectorAll('.vin-item')) {
+          const text = a.textContent.toUpperCase();
+          a.style.display = text.indexOf(q) !== -1 ? '' : 'none';
+        }
+      });
+    });
+  })();
+
+  // === Mobile offcanvas for VIN sidebar ===
+  (function(){
+    const sidebar = document.getElementById('vinSidebarMob') || document.getElementById('vinSidebar');
+    const overlay = document.getElementById('vinOverlayMob') || document.getElementById('vinOverlay');
+    const openBtn = document.getElementById('openVinBtn');
+    const vinList = document.getElementById('vinListMob') || document.getElementById('vinList');
+
+    function openDrawer(){ if(sidebar){ sidebar.classList.add('open'); sidebar.setAttribute('aria-hidden','false'); } if(overlay){ overlay.classList.add('show'); overlay.setAttribute('aria-hidden','false'); } }
+    function closeDrawer(){ if(sidebar){ sidebar.classList.remove('open'); sidebar.setAttribute('aria-hidden','true'); } if(overlay){ overlay.classList.remove('show'); overlay.setAttribute('aria-hidden','true'); } }
+
+    openBtn && openBtn.addEventListener('click', openDrawer);
+    overlay && overlay.addEventListener('click', closeDrawer);
+    // close on Esc
+    document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeDrawer(); });
+    // close when selecting a VIN
+    vinList && vinList.addEventListener('click', (e)=>{ const a = e.target.closest('a'); if(a) closeDrawer(); });
+  })();
+
+  // === Sequential pulsing of global #steps across all posts ===
+  (function(){
+    try{
+      // Respect users who prefer reduced motion
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+      // 1) Mark badges that are actual numbered steps (#1, #2, ...)
+      const allBadges = Array.from(document.querySelectorAll('.badge-step'));
+      allBadges.forEach(el=>{
+        const txt = (el.textContent || '').trim();
+        const m = /^#(\d+)$/.exec(txt);
+        if (m) {
+          el.classList.add('step-badge');
+          el.dataset.step = m[1];
+        }
+      });
+
+      // 2) Collect in numeric order
+      const steps = Array
+        .from(document.querySelectorAll('.step-badge[data-step]'))
+        .sort((a,b)=> parseInt(a.dataset.step,10) - parseInt(b.dataset.step,10));
+
+      if (!steps.length) return;
+
+      // 3) Pulse one-by-one in a loop (with ability to start from any step)
+      let idx = 0;
+      const PERIOD = 800; // ms per step
+      let timer = null;
+
+      function tick(){
+        steps.forEach(n=> n.classList.remove('pulse'));
+        const el = steps[idx];
+        el.classList.add('pulse');
+        idx = (idx + 1) % steps.length;
+      }
+
+      function startLoop(){
+        if (timer) clearInterval(timer);
+        tick();
+        timer = setInterval(tick, PERIOD);
+      }
+
+      function startFromStep(stepNum){
+        // find index of the first badge with this step number
+        const targetIndex = steps.findIndex(el => parseInt(el.dataset.step,10) === stepNum);
+        if (targetIndex >= 0){
+          idx = targetIndex; // next tick() will highlight exactly this step first
+          startLoop();
+        }
+      }
+
+      // Click handler: clicking on a step-badge starts the sequence from that number
+      document.addEventListener('click', function(e){
+        const el = e.target.closest('.step-badge[data-step]');
+        if (!el) return;
+        // Prevent navigation if the badge is inside an <a>
+        e.preventDefault();
+        e.stopPropagation();
+        const n = parseInt(el.dataset.step, 10);
+        if (!isNaN(n)) startFromStep(n);
+      });
+
+      // Init
+      startLoop();
+    } catch(err){
+      console.warn('Step ticker error:', err);
+    }
+  })();
+</script>
+{% endblock %}

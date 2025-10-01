@@ -1,0 +1,57 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Вход{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="text-center">Вход</h3>
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        {% for error in form.non_field_errors %}
+                            {{ error }}
+                        {% endfor %}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+                    </div>
+                {% endif %}
+
+                <form id="login-form" method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Имя пользователя</label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Пароль</label>
+                        <div class="input-group">
+                            <input type="password" name="password" class="form-control" id="password-field" required>
+                            <span class="input-group-text" id="toggle-password" style="cursor: pointer;">
+                                <i class="bi bi-eye-slash" id="eye-icon"></i>
+                            </span>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Войти</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const togglePassword = document.getElementById("toggle-password");
+    const passwordField = document.getElementById("password-field");
+    const eyeIcon = document.getElementById("eye-icon");
+
+    togglePassword.addEventListener("click", () => {
+        const isHidden = passwordField.type === "password";
+        passwordField.type = isHidden ? "text" : "password";
+
+        eyeIcon.classList.toggle("bi-eye");
+        eyeIcon.classList.toggle("bi-eye-slash");
+    });
+</script>
+{% endblock %}

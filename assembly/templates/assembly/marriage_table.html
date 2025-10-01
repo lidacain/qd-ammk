@@ -1,0 +1,469 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Marriage — таблица{% endblock %}
+
+{% block content %}
+<style>
+  .table-wrap{position:fixed;top:56px;left:0;right:0;bottom:0;background:#fff;display:flex;flex-direction:column}
+  .toolbar{padding:12px 16px;border-bottom:1px solid #dee2e6;background:#fff;z-index:10}
+  .toolbar-grid{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+  .toolbar-grid .left{justify-self:start}
+  .toolbar-grid .center{justify-self:center}
+  .toolbar-grid .right{justify-self:end}
+  .tools{display:flex;align-items:center;gap:12px;justify-content:space-between}
+  .tools-left{flex:1;max-width:520px}
+  .tools-right{display:flex;gap:10px}
+  .table-scroll{flex:1;overflow:auto;padding:16px}
+  table{width:100%;min-width:1100px;border-collapse:collapse}
+  thead th{position:sticky;top:0;z-index:5;background:#212529;color:#fff;vertical-align:middle}
+  th,td{padding:8px 10px;border-bottom:1px solid #e9ecef}
+  .filter-btn{padding:2px 8px}
+  .filter-icon{font-size:14px}
+  .filter-btn.btn-outline-light .bi{color:#fff}
+  .filter-btn.btn-success .bi{color:#fff}
+  /* Поповер */
+  #filter-popover{position:fixed;z-index:2000;width:320px;max-width:90vw;display:none;background:#fff;border:1px solid #dee2e6;border-radius:.5rem;box-shadow:0 .5rem 1rem rgba(0,0,0,.15)}
+  #filter-popover .head{padding:8px 10px;border-bottom:1px solid #dee2e6;display:flex;align-items:center;justify-content:space-between}
+  #filter-popover .body{max-height:320px;overflow:auto;padding:10px}
+  #filter-popover .foot{padding:8px 10px;border-top:1px solid #dee2e6;display:flex;gap:8px;justify-content:flex-end}
+  .muted{color:#6c757d}
+  .pill{display:inline-block;padding:2px 8px;border:1px solid #dee2e6;border-radius:999px;font-size:12px;color:#6c757d}
+
+  thead th{
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #fff;      /* фон светлый */
+    color: #212529;        /* текст чёрный */
+    border-bottom: 2px solid #dee2e6; /* низ отделяем */
+  }
+
+  /* вертикальные разделители колонок */
+  .table thead th,
+  .table tbody td {
+    border-right: 1px solid #e9ecef;
+  }
+  .table thead th:last-child,
+  .table tbody td:last-child {
+    border-right: none;
+  }
+
+  .filter-btn.btn-outline-light {
+    border-color: #ced4da !important;
+    background: #fff !important;
+  }
+  .filter-btn.btn-outline-light .bi {
+    color: #6c757d !important;
+    opacity: .95;
+  }
+
+  /* активная остаётся зелёной с белой иконкой */
+  .filter-btn.btn-success { border-color: #198754; }
+  .filter-btn.btn-success .bi { color: #fff !important; }
+
+  #filter-popover{
+    width: 340px;
+    max-width: calc(100vw - 24px);  /* запас по краям */
+  }
+  #filter-popover .foot{
+    flex-wrap: wrap;                /* если не влезают, кнопки переносятся */
+  }
+</style>
+
+<div class="table-wrap">
+  <!-- Панель 1: назад • заголовок по центру • счётчик справа -->
+  <div class="toolbar">
+    <div class="toolbar-grid">
+      <div class="left">
+        <a href="javascript:history.back()" class="btn btn-outline-secondary">← Назад</a>
+      </div>
+      <div class="center">
+        <h5 class="m-0">Marriage — таблица</h5>
+      </div>
+      <div class="right muted small">
+        Показано: <span id="shown-count">0</span> из <span id="total-count">0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Панель 2: поиск VIN слева • кнопки справа -->
+  <div class="toolbar">
+    <div class="tools">
+      <div class="tools-left">
+        <input id="quick-search" type="search" class="form-control" placeholder="Поиск VIN…">
+      </div>
+      <div class="tools-right">
+        <button id="reset-all" class="btn btn-danger">Сбросить все фильтры</button>
+        <a id="download-excel" class="btn btn-success" href="#">Скачать Excel</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-scroll">
+    <table id="marriage-table" class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th style="min-width:160px;">VIN</th>
+
+          <th style="min-width:160px;">
+            <div class="d-flex align-items-center gap-2">
+              <span>Бренд</span>
+              <button class="btn btn-outline-light btn-sm filter-btn" data-col="brand" title="Фильтр Бренд">
+                <i class="bi bi-funnel filter-icon"></i>
+              </button>
+            </div>
+          </th>
+
+          <th style="min-width:200px;">
+            <div class="d-flex align-items-center gap-2">
+              <span>Модель</span>
+              <button class="btn btn-outline-light btn-sm filter-btn" data-col="model" title="Фильтр Модель">
+                <i class="bi bi-funnel filter-icon"></i>
+              </button>
+            </div>
+          </th>
+
+          <th style="min-width:160px;">№ ДВС</th>
+          <th style="min-width:160px;">№ Трансмиссии</th>
+
+          <th style="min-width:140px;">
+            <div class="d-flex align-items-center gap-2">
+              <span>День</span>
+              <button class="btn btn-outline-light btn-sm filter-btn" data-col="day" title="Фильтр День">
+                <i class="bi bi-funnel filter-icon"></i>
+              </button>
+            </div>
+          </th>
+
+          <th style="min-width:120px;">
+            <div class="d-flex align-items-center gap-2">
+              <span>Время</span>
+              <button class="btn btn-outline-light btn-sm filter-btn" data-col="time" title="Фильтр Время">
+                <i class="bi bi-funnel filter-icon"></i>
+              </button>
+            </div>
+          </th>
+
+          <th style="min-width:180px;">
+            <div class="d-flex align-items-center gap-2">
+              <span>Кто сохранил</span>
+              <button class="btn btn-outline-light btn-sm filter-btn" data-col="saved_by" title="Фильтр Кто сохранил">
+                <i class="bi bi-funnel filter-icon"></i>
+              </button>
+            </div>
+          </th>
+        </tr>
+      </thead>
+      <tbody id="tbl-body">
+        {% for r in records %}
+          {% with day=r.updated_at|date:"Y-m-d" time=r.updated_at|date:"H:i" %}
+          <tr
+            data-vin="{{ r.vin|default_if_none:'' }}"
+            data-brand="{{ r.brand|default_if_none:'' }}"
+            data-model="{{ r.model|default_if_none:'' }}"
+            data-day="{{ day }}"
+            data-time="{{ time }}"
+            data-saved-by="{{ r.saved_by|default_if_none:'—' }}"
+          >
+            <td class="fw-semibold">{{ r.vin }}</td>
+            <td>{{ r.brand|default:"—" }}</td>
+            <td>{{ r.model|default:"—" }}</td>
+            <td>{{ r.engine_number|default:"—" }}</td>
+            <td>{{ r.transmission_number|default:"—" }}</td>
+            <td>{{ day }}</td>
+            <td>{{ time }}</td>
+            <td>{{ r.saved_by|default:"—" }}</td>
+          </tr>
+          {% endwith %}
+        {% empty %}
+          <tr><td colspan="8" class="text-center text-muted py-4">Нет данных</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Единый поповер -->
+<div id="filter-popover" role="dialog" aria-modal="true">
+  <div class="head">
+    <div class="title fw-semibold">Фильтр</div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="close-popover">✕</button>
+  </div>
+  <div class="body"></div>
+  <div class="foot">
+    <button class="btn btn-sm btn-outline-secondary" id="btn-clear">Сбросить</button>
+    <button class="btn btn-sm btn-outline-secondary" id="btn-uncheck">Снять все</button>
+    <button class="btn btn-sm btn-outline-secondary" id="btn-check">Выбрать все</button>
+    <button class="btn btn-sm btn-primary" id="btn-apply">Применить</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const tbody = document.getElementById('tbl-body');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const shownCountEl = document.getElementById('shown-count');
+  const totalCountEl = document.getElementById('total-count');
+  totalCountEl.textContent = rows.length.toString();
+
+  // -------- Быстрый поиск VIN
+  const quickSearch = document.getElementById('quick-search');
+
+  // ------- Состояние фильтров (URL <-> state) -------
+  const state = {
+    vin_q: "",                 // подстрока VIN
+    brand: new Set(),
+    model: new Set(),
+    saved_by: new Set(),
+    day_from: "", day_to: "",
+    time_from: "", time_to: ""
+  };
+
+  function parseCSV(val){return (val||"").split(",").map(s=>s.trim()).filter(Boolean);}
+  function readURL(){
+    const p=new URLSearchParams(location.search);
+    state.vin_q = (p.get('q')||"").toUpperCase();
+    parseCSV(p.get('brand')).forEach(v=>state.brand.add(v));
+    parseCSV(p.get('model')).forEach(v=>state.model.add(v));
+    parseCSV(p.get('saved_by')).forEach(v=>state.saved_by.add(v));
+    state.day_from  = p.get('day_from')  || "";
+    state.day_to    = p.get('day_to')    || "";
+    state.time_from = p.get('time_from') || "";
+    state.time_to   = p.get('time_to')   || "";
+    quickSearch.value = state.vin_q;
+  }
+  function writeURL(replace=true){
+    const p=new URLSearchParams();
+    if (state.vin_q) p.set('q', state.vin_q);
+    if (state.brand.size)    p.set('brand', Array.from(state.brand).join(','));
+    if (state.model.size)    p.set('model', Array.from(state.model).join(','));
+    if (state.saved_by.size) p.set('saved_by', Array.from(state.saved_by).join(','));
+    if (state.day_from)  p.set('day_from', state.day_from);
+    if (state.day_to)    p.set('day_to', state.day_to);
+    if (state.time_from) p.set('time_from', state.time_from);
+    if (state.time_to)   p.set('time_to', state.time_to);
+    const url=`${location.pathname}${p.toString()?('?'+p.toString()):''}`;
+    if (replace) history.replaceState(null,'',url); else history.pushState(null,'',url);
+    setExcelHref();
+  }
+
+  // --- Excel href helper ---
+  const excelBtn = document.getElementById('download-excel');
+  function setExcelHref() {
+    const base = "{% url 'assembly:assembly_marriage_export' %}";
+    excelBtn.href = base + (location.search || "");
+  }
+
+  // ------- Проверка соответствия строки всем фильтрам -------
+  function inRangeStr(val,from,to){if(!val)return true;if(from&&val<from)return false;if(to&&val>to)return false;return true;}
+  function rowMatchesAll(r){
+    const vin=(r.dataset.vin||'').toUpperCase();
+    const brand=r.dataset.brand||'';
+    const model=r.dataset.model||'';
+    const day=r.dataset.day||'';
+    const time=(r.dataset.time||'')+(r.dataset.time&&r.dataset.time.length===5?':00':'');
+    const saved=r.getAttribute('data-saved-by')||'';
+
+    if (state.vin_q && !vin.includes(state.vin_q)) return false;
+    if (state.brand.size && !state.brand.has(brand)) return false;
+    if (state.model.size && !state.model.has(model)) return false;
+    if (state.saved_by.size && !state.saved_by.has(saved)) return false;
+    if (!inRangeStr(day, state.day_from, state.day_to)) return false;
+    if (!inRangeStr(time, state.time_from, state.time_to)) return false;
+    return true;
+  }
+  function rowMatchesAllExcept(r, exceptCol){
+    const backup = JSON.parse(JSON.stringify({
+      vin_q: state.vin_q,
+      brand: Array.from(state.brand),
+      model: Array.from(state.model),
+      saved_by: Array.from(state.saved_by),
+      day_from: state.day_from, day_to: state.day_to,
+      time_from: state.time_from, time_to: state.time_to
+    }));
+    if (exceptCol==='brand') state.brand=new Set();
+    if (exceptCol==='model') state.model=new Set();
+    if (exceptCol==='saved_by') state.saved_by=new Set();
+    if (exceptCol==='day'){state.day_from="";state.day_to="";}
+    if (exceptCol==='time'){state.time_from="";state.time_to="";}
+    const ok=rowMatchesAll(r);
+    // restore
+    state.vin_q = backup.vin_q;
+    state.brand = new Set(backup.brand);
+    state.model = new Set(backup.model);
+    state.saved_by = new Set(backup.saved_by);
+    state.day_from = backup.day_from; state.day_to = backup.day_to;
+    state.time_from = backup.time_from; state.time_to = backup.time_to;
+    return ok;
+  }
+
+  function applyFilters(){
+    let shown=0;
+    rows.forEach(r=>{
+      const ok=rowMatchesAll(r);
+      r.style.display=ok?'':'none';
+      if(ok) shown++;
+    });
+    shownCountEl.textContent=shown.toString();
+    updateButtonsActiveState();
+  }
+
+  // ------- Поповер фильтров -------
+  const pop=document.getElementById('filter-popover');
+  const popBody=pop.querySelector('.body');
+  const popTitle=pop.querySelector('.title');
+  const btnApply=document.getElementById('btn-apply');
+  const btnClear=document.getElementById('btn-clear');
+  const btnUncheck=document.getElementById('btn-uncheck');
+  const btnCheck=document.getElementById('btn-check');
+  const btnClose=document.getElementById('close-popover');
+  let currentCol=null, anchorBtn=null;
+
+  function closePopover(){pop.style.display='none';currentCol=null;anchorBtn=null;}
+  btnClose.addEventListener('click',closePopover);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closePopover();});
+  document.addEventListener('click',e=>{if(!pop.contains(e.target)&&!e.target.closest('.filter-btn')) closePopover();});
+
+  function positionPopover(btn, { center = false } = {}) {
+    const rect = btn.getBoundingClientRect();
+    const w = pop.offsetWidth || 320;           // fallback, когда ещё не измеряется
+    const h = pop.offsetHeight || 200;
+
+    // вертикально — под кнопкой, но не ниже низа экрана
+    const top = Math.min(rect.bottom + 6, window.innerHeight - h - 12);
+
+    // по X: либо центр экрана (для saved_by), либо возле кнопки
+    let left = center ? Math.round((window.innerWidth - w) / 2) : rect.left;
+
+    // зажимы, чтобы поповер не выходил за экран
+    left = Math.max(12, Math.min(left, window.innerWidth - w - 12));
+
+    pop.style.top = `${top}px`;
+    pop.style.left = `${left}px`;
+  }
+
+  function buildUniqueList(col,title,selectedSet){
+    popTitle.textContent=title;
+    const options=new Map();
+    rows.forEach(r=>{
+      if(!rowMatchesAllExcept(r,col)) return;
+      let val='';
+      if(col==='brand') val=r.dataset.brand||'';
+      else if(col==='model') val=r.dataset.model||'';
+      else if(col==='saved_by') val=r.getAttribute('data-saved-by')||'';
+      val=val||'—';
+      options.set(val,(options.get(val)||0)+1);
+    });
+    const arr=Array.from(options.entries()).sort((a,b)=>a[0].localeCompare(b[0],'ru'));
+    let html='<div class="small muted mb-2">Выберите значения:</div><div class="d-flex flex-column gap-1">';
+    arr.forEach(([val,count])=>{
+      const id=`opt-${col}-${btoa(unescape(encodeURIComponent(val))).replace(/=/g,'')}`;
+      const checked=selectedSet.has(val)?'checked':'';
+      html+=`<div class="form-check">
+        <input class="form-check-input opt-item" type="checkbox" id="${id}" data-value="${val}" ${checked}>
+        <label class="form-check-label" for="${id}">${val} <span class="pill">${count}</span></label>
+      </div>`;
+    });
+    html+='</div>';
+    popBody.innerHTML=html;
+    btnCheck.style.display=''; btnUncheck.style.display='';
+  }
+  function buildDateRange(title){
+    popTitle.textContent=title;
+    popBody.innerHTML=`<div class="row g-2">
+      <div class="col-6"><label class="form-label small text-muted">С даты</label><input type="date" id="day_from" class="form-control" value="${state.day_from}"></div>
+      <div class="col-6"><label class="form-label small text-muted">По дату</label><input type="date" id="day_to" class="form-control" value="${state.day_to}"></div>
+    </div>`;
+    btnCheck.style.display='none'; btnUncheck.style.display='none';
+  }
+  function buildTimeRange(title){
+    popTitle.textContent=title;
+    popBody.innerHTML=`<div class="row g-2">
+      <div class="col-6"><label class="form-label small text-muted">С времени</label><input type="time" id="time_from" class="form-control" value="${state.time_from}"></div>
+      <div class="col-6"><label class="form-label small text-muted">По время</label><input type="time" id="time_to" class="form-control" value="${state.time_to}"></div>
+    </div>`;
+    btnCheck.style.display='none'; btnUncheck.style.display='none';
+  }
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentCol = btn.dataset.col;
+      anchorBtn = btn;
+
+      if (currentCol === 'brand')    buildUniqueList('brand',    'Фильтр: Бренд',        state.brand);
+      if (currentCol === 'model')    buildUniqueList('model',    'Фильтр: Модель',       state.model);
+      if (currentCol === 'saved_by') buildUniqueList('saved_by', 'Фильтр: Кто сохранил', state.saved_by);
+      if (currentCol === 'day')      buildDateRange('Фильтр: День');
+      if (currentCol === 'time')     buildTimeRange('Фильтр: Время');
+
+      pop.style.display = 'block';                             // показать -> есть размеры
+      positionPopover(btn, { right: currentCol === 'saved_by' });  // теперь точно позиционируем
+    });
+  });
+
+  btnCheck.addEventListener('click',()=>{popBody.querySelectorAll('.opt-item').forEach(i=>i.checked=true);});
+  btnUncheck.addEventListener('click',()=>{popBody.querySelectorAll('.opt-item').forEach(i=>i.checked=false);});
+  btnClear.addEventListener('click',()=>{
+    if(currentCol==='brand') state.brand.clear();
+    if(currentCol==='model') state.model.clear();
+    if(currentCol==='saved_by') state.saved_by.clear();
+    if(currentCol==='day'){state.day_from="";state.day_to="";}
+    if(currentCol==='time'){state.time_from="";state.time_to="";}
+    writeURL(); applyFilters(); closePopover();
+  });
+  btnApply.addEventListener('click',()=>{
+    if(['brand','model','saved_by'].includes(currentCol)){
+      const setRef = currentCol==='brand'?state.brand:(currentCol==='model'?state.model:state.saved_by);
+      setRef.clear();
+      popBody.querySelectorAll('.opt-item:checked').forEach(i=>setRef.add(i.dataset.value));
+    }
+    if(currentCol==='day'){
+      state.day_from = popBody.querySelector('#day_from').value || "";
+      state.day_to   = popBody.querySelector('#day_to').value   || "";
+    }
+    if(currentCol==='time'){
+      const f=popBody.querySelector('#time_from').value||"";
+      const t=popBody.querySelector('#time_to').value||"";
+      state.time_from = f ? (f.length===5?f+':00':f) : "";
+      state.time_to   = t ? (t.length===5?t+':00':t) : "";
+    }
+    writeURL(false); applyFilters(); closePopover();
+  });
+
+  function updateButtonsActiveState(){
+    document.querySelectorAll('.filter-btn').forEach(btn=>{
+      const col=btn.dataset.col;
+      let on=false;
+      if(col==='brand') on=state.brand.size>0;
+      if(col==='model') on=state.model.size>0;
+      if(col==='saved_by') on=state.saved_by.size>0;
+      if(col==='day') on=!!(state.day_from||state.day_to);
+      if(col==='time') on=!!(state.time_from||state.time_to);
+      btn.classList.toggle('btn-success',on);
+      btn.classList.toggle('btn-outline-light',!on);
+    });
+  }
+
+  // Быстрый VIN-поиск (моментально)
+  quickSearch.addEventListener('input',()=>{
+    state.vin_q = (quickSearch.value||"").toUpperCase();
+    writeURL(); applyFilters();
+  });
+
+  // Кнопка «Сбросить все»
+  document.getElementById('reset-all').addEventListener('click',()=>{
+    state.vin_q=""; quickSearch.value="";
+    state.brand.clear(); state.model.clear(); state.saved_by.clear();
+    state.day_from=""; state.day_to=""; state.time_from=""; state.time_to="";
+    writeURL(); applyFilters();
+  });
+
+  // Инициализация
+  readURL();
+  applyFilters();
+  setExcelHref();
+
+})();
+</script>
+{% endblock %}

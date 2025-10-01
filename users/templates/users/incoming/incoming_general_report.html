@@ -1,0 +1,177 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block title %}Общий отчёт по входному контролю{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+    <!-- Назад -->
+    <div class="mb-3">
+        <a href="{% url 'incoming_workshop_dashboard' %}" class="btn btn-outline-secondary">
+            ← Назад
+        </a>
+    </div>
+
+    <h3 class="text-center mb-4">SUMMARY</h3>
+
+    <!-- 🔘 Фильтр по диапазону -->
+    <form method="get" class="text-center mb-4">
+        <div class="d-flex justify-content-center align-items-end gap-2 flex-wrap">
+            <div>
+                <label class="form-label mb-0">Произвольный период:</label>
+            </div>
+            <div>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+            </div>
+            <div><span class="fw-bold">—</span></div>
+            <div>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div>
+                <button type="submit" class="btn btn-primary">Применить</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- 📦 Общая сводка -->
+    <div class="row g-3 text-center mb-5 row-cols-2 row-cols-md-3 row-cols-lg-6">
+        <div class="col">
+            <div class="card shadow-sm border-secondary h-100">
+                <div class="card-body p-2">
+                    <h6 class="card-title small">Всего осмотров</h6>
+                    <p class="fs-5 text-secondary mb-0">{{ overall_total_inspections }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card shadow-sm border-success h-100">
+                <div class="card-body p-2">
+                    <h6 class="card-title small">Без дефектов</h6>
+                    <p class="fs-5 text-success mb-0">{{ overall_without_defects }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card shadow-sm border-danger h-100">
+                <div class="card-body p-2">
+                    <h6 class="card-title small">С дефектами</h6>
+                    <p class="fs-5 text-danger mb-0">{{ overall_inspections_with_defects }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card shadow-sm border-info h-100">
+                <div class="card-body p-2">
+                    <h6 class="card-title small">Всего дефектов</h6>
+                    <p class="fs-5 text-info mb-0">{{ overall_total_defects }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card shadow-sm border-primary h-100">
+                <div class="card-body p-2">
+                    <h6 class="card-title small">DPU</h6>
+                    <p class="fs-5 mb-0">{{ overall_dpu }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card shadow-sm border-success h-100">
+                <div class="card-body p-2">
+                    <h6 class="card-title small">STR (%)</h6>
+                    <p class="fs-5 mb-0">{{ overall_str_percentage }}%</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📋 Отчёты по постам -->
+    <div class="row row-cols-1 g-4">
+        {% for key, post in posts_data.items %}
+        <div class="col">
+            <div class="card shadow-lg border-0 rounded-4">
+                <div class="card-body">
+
+                    <!-- Заголовок поста -->
+                    <h5 class="card-title text-center mb-4">{{ post.title }}</h5>
+
+                    <!-- Статистика -->
+                    <div class="row text-center mb-4 row-cols-2 row-cols-md-3 row-cols-lg-6 g-3">
+                        <div class="col">
+                            <h6>Осмотров</h6>
+                            <p class="fs-6">{{ post.total_inspections }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>Без дефектов</h6>
+                            <p class="fs-6 text-success">{{ post.without_defects }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>С дефектами</h6>
+                            <p class="fs-6 text-danger">{{ post.inspections_with_defects }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>Всего дефектов</h6>
+                            <p class="fs-6 text-info">{{ post.total_defects }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>DPU</h6>
+                            <p class="fs-6">{{ post.dpu }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>STR (%)</h6>
+                            <p class="fs-6">{{ post.str_percentage }}%</p>
+                        </div>
+                    </div>
+
+                    <!-- Топ -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-center mb-2">Топ дефектов</h6>
+                            <table class="table table-striped">
+                                <tbody>
+                                    {% for defect, count in post.top_defects %}
+                                        {% with defect|split:"—" as parts %}
+                                            <tr>
+                                                <td>
+                                                    <div><strong>Деталь:</strong> {{ parts.0|default:"—"|strip }}</div>
+                                                    <div><strong>Дефект:</strong> {{ parts.1|default:"—"|strip }}</div>
+                                                </td>
+                                                <td class="text-end align-middle">{{ count }}</td>
+                                            </tr>
+                                        {% endwith %}
+                                    {% empty %}
+                                        <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="col-md-6">
+                            <h6 class="text-center mb-2">Топ контроллеров</h6>
+                            <table class="table table-striped">
+                                <tbody>
+                                    {% for controller, count in post.top_controllers %}
+                                        <tr>
+                                            <td>{{ controller }}</td>
+                                            <td class="text-end">{{ count }}</td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

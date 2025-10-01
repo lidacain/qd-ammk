@@ -1,0 +1,107 @@
+{% extends "users/base.html" %}
+
+{% block title %}Справочник{% endblock %}
+
+{% block content %}
+
+        <!-- 🔙 Кнопка Назад -->
+    <div class="mb-3">
+        <a href="{% url 'master_dashboard' %}" class="btn btn-light">
+            ← Назад
+        </a>
+    </div>
+
+    <h1 class="mb-4" style="color: white">Справочник сотрудников</h1>
+
+    <form method="get" class="row g-2 mb-4 position-relative">
+        <div class="col-9 col-md-10 position-relative">
+            <input id="searchInput" type="text" name="q" class="form-control pe-5" placeholder="Введите имя сотрудника, номер телефона, e-mail, должность или отдел" value="{{ query }}">
+            <button type="button" id="clearButton" class="btn position-absolute top-50 end-0 translate-middle-y me-2 p-0 border-0 bg-transparent" style="display: none;">
+                <i class="bi bi-x-lg" style="font-size: 1.6rem; color: red; font-weight: bold; text-shadow: 0 0 0.5px red;"></i>
+            </button>
+        </div>
+        <div class="col-3 col-md-2">
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-search"></i> Поиск
+            </button>
+        </div>
+    </form>
+    <!-- 🔼 Кнопка "Наверх" -->
+    <button id="scrollToTopBtn" class="btn btn-light rounded-circle shadow position-fixed"
+            style="bottom: 20px; right: 20px; display: none; z-index: 1000;">
+        <i class="bi bi-arrow-up" style="font-size: 1.3rem;"></i>
+    </button>
+    {% if contacts %}
+        {% for contact in contacts %}
+            <div class="card mb-3 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">{{ contact.department }}</h5>
+                    <p class="card-text mb-1"><strong>Должность:</strong> {{ contact.position }}</p>
+                    <p class="card-text mb-1"><strong>Сотрудник:</strong> {{ contact.employee_name }}</p>
+                    <p class="card-text mb-1">
+                        <strong>Мобильный:</strong> {{ contact.phone_number }}
+
+                    {% with contact.phone_number|cut:" "|cut:"-"|cut:"("|cut:")"|cut:"+" as phone_clean %}
+                        {% if phone_clean|length >= 11 %}
+                            <a href="https://wa.me/{{ phone_clean }}" target="_blank" class="ms-2">
+                                <i class="bi bi-whatsapp text-success"></i>
+                            </a>
+                            <a href="tel:{{ phone_clean }}" class="ms-2">
+                                <i class="bi bi-telephone-outbound text-primary"></i>
+                            </a>
+                        {% else %}
+                            {% with "7"|add:phone_clean as phone_link %}
+                                <a href="https://wa.me/{{ phone_link }}" target="_blank" class="ms-2">
+                                    <i class="bi bi-whatsapp text-success"></i>
+                                </a>
+                                <a href="tel:{{ phone_link }}" class="ms-2">
+                                    <i class="bi bi-telephone-outbound text-primary"></i>
+                                </a>
+                            {% endwith %}
+                        {% endif %}
+                    {% endwith %}
+                    </p>
+                    <p class="card-text mb-0">
+                        <strong>E-mail:</strong>
+                        <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+                    </p>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>Ничего не найдено.</p>
+    {% endif %}
+
+    <script>
+        const input = document.getElementById('searchInput');
+        const clearBtn = document.getElementById('clearButton');
+
+        function toggleClearButton() {
+            clearBtn.style.display = input.value ? 'inline' : 'none';
+        }
+
+        input.addEventListener('input', toggleClearButton);
+
+        clearBtn.addEventListener('click', () => {
+            input.value = '';
+            toggleClearButton();
+            input.focus();
+        });
+
+        window.addEventListener('DOMContentLoaded', toggleClearButton);
+
+        const scrollToTopBtn = document.getElementById("scrollToTopBtn");
+
+        window.addEventListener("scroll", () => {
+            if (window.scrollY > 300) {
+                scrollToTopBtn.style.display = "block";
+            } else {
+                scrollToTopBtn.style.display = "none";
+            }
+        });
+
+        scrollToTopBtn.addEventListener("click", () => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block title %}VIN Обзор{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3 class="mb-4">📦 VIN отслеживание по постам (за сегодня)</h3>
+
+    {% for zone, posts in posts_by_zone.items %}
+        <h5 class="mt-4">{{ zone }}</h5>
+        <div class="row row-cols-1 row-cols-md-3 g-4">
+            {% for post in posts %}
+                {% with key=zone|add:"__"|add:post %}
+                <div class="col">
+                    <a href="{% url 'vin_tracking_post_vins' post=post %}" class="text-decoration-none">
+                        <div class="card bg-light shadow-sm h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ post }}</h5>
+                                <p class="card-text">
+                                    VIN-ов сегодня:
+                                    <strong>{{ counters|get_item:key|default:"0" }}</strong>
+                                </p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+                {% endwith %}
+            {% endfor %}
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

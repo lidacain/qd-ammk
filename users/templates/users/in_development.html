@@ -1,0 +1,199 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Страница в разработке{% endblock %}
+
+{% block content %}
+
+<style>
+  /* ==== стили из area-подхода ==== */
+  .section-header {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #111;
+    text-transform: uppercase;
+    background-color: rgba(255, 255, 255, 0.85);
+    padding: 14px 20px;
+    border-radius: 12px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(4px);
+    margin-top: 3rem;
+    margin-bottom: 2rem;
+  }
+  .note-banner {
+    font-size: 1rem;
+    color: #111;
+    background-color: rgba(255, 255, 255, 0.85);
+    padding: 12px 16px;
+    border-radius: 12px;
+    display: inline-block;
+    box-shadow: 0 4px 12px rgba(0,0,0,.08);
+    backdrop-filter: blur(4px);
+    margin-top: 1rem;
+  }
+
+  /* видео и оверлей */
+  #constructionWrapper { max-width: 900px; }
+  #constructionVideo { opacity: 1; transition: opacity .45s ease; }
+  #constructionVideo.fade-out { opacity: 0; }
+  #constructionVideo.fade-in { opacity: 1; }
+
+  .overlay {
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    background:rgba(0,0,0,.35); color:#fff; backdrop-filter: blur(2px);
+    transition: opacity .3s ease; opacity:1;
+    border-radius: .5rem;
+  }
+  .overlay.hidden { opacity:0; pointer-events:none; }
+
+  .spinner {
+    width: 42px; height: 42px; border: 3px solid rgba(255,255,255,.4);
+    border-top-color:#fff; border-radius:50%; animation: spin 1s linear infinite;
+    margin-bottom: .5rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .label { font-weight: 500; }
+  .dots::after {
+    content: ''; display:inline-block; width: 1ch; text-align:left;
+    animation: dots 1.2s steps(3,end) infinite;
+  }
+  @keyframes dots {
+    0% { content:''; } 33% { content:'.'; } 66% { content:'..'; } 100% { content:'...'; }
+  }
+</style>
+
+
+<div class="container py-4 text-center">
+    <div class="section-header">Страница в разработке</div>
+
+    <div id="constructionWrapper" class="position-relative d-inline-block">
+        <video id="constructionVideo" class="img-fluid rounded shadow" autoplay muted playsinline></video>
+
+        <!-- Оверлей между видео -->
+        <div id="transitionOverlay" class="overlay hidden">
+            <div class="spinner"></div>
+            <div class="label" >Готовим следующее видео<span class="dots"></span></div>
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <div class="note-banner">Мы активно работаем над этой страницей. Зайдите позже.</div>
+    </div>
+
+    <div class="mt-3">
+        <a href="javascript:history.back()" class="btn btn-light">← Вернуться назад</a>
+    </div>
+</div>
+
+<style>
+  #constructionWrapper { max-width: 900px; }
+  #constructionVideo { opacity: 1; transition: opacity .45s ease; }
+  #constructionVideo.fade-out { opacity: 0; }
+  #constructionVideo.fade-in { opacity: 1; }
+
+  .overlay {
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    background:rgba(0,0,0,.35); color:#fff; backdrop-filter: blur(2px);
+    transition: opacity .3s ease; opacity:1;
+    border-radius: .5rem;
+  }
+  .overlay.hidden { opacity:0; pointer-events:none; }
+
+  .spinner {
+    width: 42px; height: 42px; border: 3px solid rgba(255,255,255,.4);
+    border-top-color:#fff; border-radius:50%; animation: spin 1s linear infinite;
+    margin-bottom: .5rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .label { font-weight: 500; }
+  .dots::after {
+    content: ''; display:inline-block; width: 1ch; text-align:left;
+    animation: dots 1.2s steps(3,end) infinite;
+  }
+  @keyframes dots {
+    0% { content:''; } 33% { content:'.'; } 66% { content:'..'; } 100% { content:'...'; }
+  }
+</style>
+
+<script>
+  // видео в начале
+  const introVideos = [
+    "{% static 'videos/FWug.mp4' %}",
+    "{% static 'videos/18AV.mp4' %}",
+    "{% static 'videos/SkjR.mp4' %}",
+    "{% static 'videos/R0nL.mp4' %}",
+    "{% static 'videos/HEOb.mp4' %}",
+    "{% static 'videos/Lgyc.mp4' %}",
+  ];
+
+  // финальное короткое видео
+  const loopVideo = "{% static 'videos/HeQq.mp4' %}";
+
+  const PAUSE_MS = 1000; // пауза между роликами в начале
+  const video = document.getElementById('constructionVideo');
+  const overlay = document.getElementById('transitionOverlay');
+
+  let i = 0;
+  let phase = 'intro'; // intro или loop
+
+  function setSource(src) {
+    video.src = src;
+    video.load();
+  }
+
+  // старт
+  setSource(introVideos[i]);
+
+  video.addEventListener('canplay', () => {
+    video.classList.remove('fade-out');
+    video.classList.add('fade-in');
+    video.play();
+  }, { once: true });
+
+  video.addEventListener('ended', () => {
+    if (phase === 'intro') {
+      if (i < introVideos.length - 1) {
+        // переключаемся на следующее видео
+        video.classList.remove('fade-in');
+        video.classList.add('fade-out');
+        overlay.classList.remove('hidden');
+
+        setTimeout(() => {
+          i++;
+          setSource(introVideos[i]);
+          const onReady = () => {
+            setTimeout(() => {
+              video.classList.remove('fade-out');
+              video.classList.add('fade-in');
+              overlay.classList.add('hidden');
+              video.play();
+            }, 150);
+            video.removeEventListener('canplay', onReady);
+          };
+          video.addEventListener('canplay', onReady);
+        }, PAUSE_MS);
+      } else {
+        // закончили интро, включаем бесконечный цикл короткого видео
+        phase = 'loop';
+        video.loop = true;
+        overlay.classList.add('hidden');
+        setSource(loopVideo);
+        const onReadyLoop = () => {
+          video.classList.remove('fade-out');
+          video.classList.add('fade-in');
+          video.play();
+          video.removeEventListener('canplay', onReadyLoop);
+        };
+        video.addEventListener('canplay', onReadyLoop);
+      }
+    }
+  });
+</script>
+
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Доступ запрещён{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="alert alert-danger shadow-sm text-center">
+        <h1 class="mb-4">🚫 У вас нет доступа к этой странице</h1>
+        <p class="lead">Возможно, у вас нет прав для просмотра этой страницы.</p>
+        <a href="{% url 'login' %}" class="btn btn-primary mt-3">Вернуться на главную</a>
+    </div>
+</div>
+{% endblock %}

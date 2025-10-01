@@ -1,0 +1,514 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}QD AMMK{% endblock %}</title>
+
+  <!-- Bootstrap -->
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap-icons/bootstrap-icons.css' %}">
+
+  <!-- ✅ jQuery перед Select2 -->
+  <script src="{% static 'vendor/jquery/jquery-3.6.0.min.js' %}"></script>
+
+  <!-- ✅ Select2 -->
+  <link rel="stylesheet" href="{% static 'vendor/select2/select2.min.css' %}">
+  <script src="{% static 'vendor/select2/select2.min.js' %}"></script>
+  <link rel="stylesheet" href="{% static 'vendor/select2/select2-bootstrap-5-theme.min.css' %}">
+
+  <!-- QR Scanner -->
+  <script src="{% static 'vendor/qr-scanner/qr-scanner.min.js' %}"></script>
+
+  <!-- (Опционально) Chart.js, если используется где-то ещё -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- ✅ ApexCharts локально -->
+  <script src="{% static 'vendor/apexcharts/apexcharts.min.js' %}"></script>
+
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/favicon_qd_fullsize.png' %}">
+  <link rel="shortcut icon" href="{% static 'favicon/favicon_qd_fullsize.ico' %}">
+
+  <link rel="stylesheet" href="{% static 'css/modal.css' %}">
+  <script src="{% static 'js/table-enhancements.js' %}"></script>
+
+  <!-- DataTables -->
+  <link rel="stylesheet" href="{% static 'vendor/datatables/jquery.dataTables.min.css' %}">
+  <script src="{% static 'vendor/datatables/jquery.dataTables.min.js' %}"></script>
+  <script src="{% static 'js/table-filters.js' %}"></script>
+
+  <link rel="stylesheet" href="{% static 'vendor/choices/choices.min.css' %}">
+  <script src="{% static 'vendor/choices/choices.min.js' %}"></script>
+
+  <!-- Flatpickr -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+
+  {% if enable_particles %}
+    <script src="{% static 'vendor/particles/particles.min.js' %}"></script>
+  {% endif %}
+
+  <style>
+    html, body { margin:0; padding:0; width:100vw; height:100vh; }
+    body {
+      position: relative;
+      {% if enable_background %}
+      background: #f8f9fa url("{% static 'videos/factory_background.jpg' %}") no-repeat center center;
+      background-size: cover;
+      background-attachment: fixed;
+      {% else %}
+      background-color: #f8f9fa;
+      {% endif %}
+    }
+    body::after { content:''; display:block; height:80px; }
+
+    #background-darken {
+      position: fixed; top:0; left:0; width:100vw; height:100vh;
+      background: rgba(0,0,0,0.5); z-index:-3; pointer-events:none;
+    }
+    {% if enable_particles %}
+    #particles-js {
+      position: fixed; top:0; left:0; width:100vw; height:100vh;
+      z-index:-2; pointer-events:auto;
+    }
+    {% endif %}
+
+    {% if enable_white_square %}
+    #white-overlay {
+      position: fixed; top:50%; left:50%; transform: translate(-50%, -50%);
+      width:90%; max-width:900px; height:auto; min-height:80vh;
+      background: rgba(248,249,250,0.95); padding:2rem; border-radius:8px;
+      box-shadow:0 0 20px rgba(0,0,0,0.2); z-index:-1; pointer-events:none;
+    }
+    @media (max-width:768px){ #white-overlay { width:95%; padding:1rem; } }
+    {% endif %}
+
+    .footer-space { margin-bottom:50px; }
+
+    /* ==== Video background support ==== */
+    body.bg-video-active { background: #000 none !important; }
+    #bg-video-wrap {
+      position: fixed; top:0; left:0; width:100vw; height:100vh;
+      overflow: hidden; z-index:-4; pointer-events: none; display:none;
+    }
+    #bg-video {
+      position: absolute; top:50%; left:50%; transform: translate(-50%, -50%);
+      width:100%; height:100%; object-fit: contain; background:black;
+    }
+    /* ==== UI hide mode (only for lidacain) ==== */
+    body.ui-hidden::after{ height:0; }
+    body.ui-hidden .navbar,
+    body.ui-hidden .container,
+    body.ui-hidden #white-overlay,
+    body.ui-hidden #particles-js,
+    body.ui-hidden #background-darken{ display:none !important; }
+    body.ui-hidden #ui-restore-btn{ display:block !important; }
+
+    /* ===== Loader Overlay ===== */
+    .loader-overlay{
+      position: fixed; inset:0;
+      background: rgba(17,17,17,.35);
+      backdrop-filter: blur(4px);
+      display: none; align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    .loader-overlay.show{ display:flex; }
+
+    .loader-card{
+      min-width: 260px; max-width: 90vw;
+      background: #111827; color:#e5e7eb;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 16px; padding: 20px 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+
+    .loader-spinner{
+      width: 44px; height: 44px; margin: 0 auto 10px;
+      border: 4px solid rgba(255,255,255,.15);
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin{ to{ transform: rotate(360deg); } }
+
+    .loader-text{
+      text-align:center; font-weight:600; font-size:14px; opacity:.95; margin-bottom:10px;
+    }
+
+    .loader-bar{ height:6px; background:rgba(255,255,255,.12); border-radius:999px; overflow:hidden; }
+    .loader-bar-fill{
+      height:100%; width:35%;
+      background: linear-gradient(90deg, #60a5fa, #34d399, #f59e0b);
+      filter:saturate(120%);
+      border-radius:999px;
+      animation: indeterminate 1.6s ease-in-out infinite;
+    }
+    @keyframes indeterminate{
+      0%{ transform: translateX(-110%); }
+      50%{ transform: translateX(15%); }
+      100%{ transform: translateX(110%); }
+    }
+  </style>
+</head>
+<body>
+  {% if enable_background %}<div id="background-darken"></div>{% endif %}
+  {% if enable_particles %}<div id="particles-js"></div>{% endif %}
+  {% if enable_white_square %}<div id="white-overlay"></div>{% endif %}
+
+  <!-- Background video (hidden by default; shown when toggled) -->
+  <div id="bg-video-wrap">
+    <video id="bg-video" autoplay muted loop playsinline>
+      <source src="{% static 'videos/background.webm' %}" type="video/webm">
+      <!-- Fallbacks can be added here if needed (mp4) -->
+    </video>
+  </div>
+
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+      <a class="navbar-brand"
+         href="{% if not user.is_authenticated %}
+                   {% url 'login' %}
+               {% elif user.role == 'controller' %}
+                   {% url 'controller_dashboard' %}
+               {% else %}
+                   {% url 'master_dashboard' %}
+               {% endif %}">
+        QD-AMMK
+      </a>
+
+      {% if 'post_id=' in request.get_full_path %}
+        <div class="d-flex ms-auto gap-2">
+          <a class="btn btn-outline-light" href="{% url 'profile' %}">
+            <i class="bi bi-person"></i> Профиль
+          </a>
+          <a class="btn btn-outline-light" href="{% url 'controller_dashboard' %}">
+            <i class="bi bi-qr-code-scan"></i> Сменить пост
+          </a>
+          <a class="btn btn-outline-light" href="{% url 'logout' %}">
+            <i class="bi bi-box-arrow-right"></i> Выйти
+          </a>
+        </div>
+      {% else %}
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav ms-auto">
+            {% if user.is_authenticated %}
+              <!-- ПК -->
+              <li class="nav-item dropdown d-none d-lg-block">
+                <a class="nav-link text-light dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  {% if user.avatar %}
+                    <img src="{{ user.avatar.url }}" alt="avatar" class="shadow rounded me-2" style="width:30px;height:30px;object-fit:cover;">
+                  {% else %}
+                    <i class="bi bi-person-circle me-2" style="font-size:1.5rem;"></i>
+                  {% endif %}
+                  <span class="fs-5">{{ user.username }}</span>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  {% if user.username == 'lidacain' or user.username == 't.tokshekenov' or user.username == 'p.kalinin' %}
+                  <li><button type="button" class="dropdown-item" id="toggle-ui">Скрыть интерфейс</button></li>
+                  <li><hr class="dropdown-divider"></li>
+                  {% endif %}
+                  {% if user.username == 'lidacain' or user.username == 't.tokshekenov' or user.username == 'p.kalinin'  %}
+                  <li><button type="button" class="dropdown-item" id="toggle-bg">Переключить фон</button></li>
+                  <li><hr class="dropdown-divider"></li>
+                  {% endif %}
+                  <li><a class="dropdown-item" href="{% if user.role == 'controller' %}{% url 'controller_dashboard' %}{% else %}{% url 'master_dashboard' %}{% endif %}"><i class="bi bi-house"></i> Главная</a></li>
+                  <li><a class="dropdown-item" href="{% url 'profile' %}"><i class="bi bi-person"></i> Профиль</a></li>
+                  {% if user.role == 'controller' or user.role == 'master' %}
+                  <li><a class="dropdown-item" href="{% url 'controller_dashboard' %}"><i class="bi bi-qr-code-scan"></i> Сменить пост</a></li>
+                  {% endif %}
+                  <li><a class="dropdown-item" href="{% url 'logout' %}"><i class="bi bi-box-arrow-right"></i> Выйти</a></li>
+                </ul>
+              </li>
+
+              <!-- Телефон -->
+              <li class="nav-item dropdown d-lg-none">
+                <a class="nav-link text-light dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  {% if user.avatar %}
+                    <img src="{{ user.avatar.url }}" alt="avatar" class="shadow rounded me-2" style="width:30px;height:30px;object-fit:cover;">
+                  {% else %}
+                    <i class="bi bi-person-circle me-2" style="font-size:1.5rem;"></i>
+                  {% endif %}
+                  <span class="fs-5">{{ user.username }}</span>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  {% if user.username == 'lidacain' or user.username == 't.tokshekenov' or user.username == 'p.kalinin' %}
+                  <li><button type="button" class="dropdown-item" id="toggle-ui">Скрыть интерфейс</button></li>
+                  <li><hr class="dropdown-divider"></li>
+                  {% endif %}
+                  {% if user.username == 'lidacain' or user.username == 't.tokshekenov' or user.username == 'p.kalinin'  %}
+                  <li><button type="button" class="dropdown-item" id="toggle-bg">Переключить фон</button></li>
+                  <li><hr class="dropdown-divider"></li>
+                  {% endif %}
+                  <li><a class="dropdown-item" href="{% if user.role == 'controller' %}{% url 'controller_dashboard' %}{% else %}{% url 'master_dashboard' %}{% endif %}"><i class="bi bi-house"></i> Главная</a></li>
+                  <li><a class="dropdown-item" href="{% url 'profile' %}"><i class="bi bi-person"></i> Профиль</a></li>
+                  {% if user.role == 'controller' or user.role == 'master' %}
+                  <li><a class="dropdown-item" href="{% url 'controller_dashboard' %}"><i class="bi bi-qr-code-scan"></i> Сменить пост</a></li>
+                  {% endif %}
+                  <li><a class="dropdown-item" href="{% url 'logout' %}"><i class="bi bi-box-arrow-right"></i> Выйти</a></li>
+                </ul>
+              </li>
+            {% else %}
+              <li class="nav-item">
+                <a class="btn btn-outline-light" href="{% url 'login' %}">Войти</a>
+              </li>
+            {% endif %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </nav>
+
+  <button id="ui-restore-btn" title="Показать интерфейс" style="position:fixed;right:16px;bottom:16px;z-index:9999;display:none;border:none;border-radius:999px;padding:.6rem .9rem;background:#2c2929;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.25);">Показать интерфейс</button>
+
+  <div class="container mt-5">
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- Loader Overlay -->
+<div id="page-loader" class="loader-overlay" aria-hidden="true">
+  <div class="loader-card">
+    <div class="loader-spinner"></div>
+    <div class="loader-text">Готовим данные…</div>
+    <div class="loader-bar">
+      <div class="loader-bar-fill"></div>
+    </div>
+  </div>
+</div>
+
+  <!-- Bootstrap JS -->
+  <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+
+  {% if enable_particles %}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      particlesJS('particles-js', {
+        particles: {
+          number: { value: 80 },
+          color: { value: "#ffffff" },
+          shape: { type: "circle" },
+          opacity: { value: 0.7 },
+          size: { value: 3 },
+          line_linked: { enable: true, distance: 150, color: "#ffffff", opacity: 0.5, width: 1 },
+          move: { enable: true, speed: 1.5 }
+        },
+        interactivity: {
+          detect_on: "window",
+          events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" } },
+          modes: { repulse: { distance: 150 }, push: { particles_nb: 3 } }
+        }
+      });
+    });
+  </script>
+  {% endif %}
+  <script>
+    (function(){
+      const KEY = 'qd_bg_mode'; // 'image' or 'video'
+
+      function apply(mode){
+        const wrap = document.getElementById('bg-video-wrap');
+        const video = document.getElementById('bg-video');
+        if(mode === 'video'){
+          document.body.classList.add('bg-video-active');
+          if(wrap){ wrap.style.display = 'block'; }
+          if(video){ try { video.play(); } catch(e){} }
+        } else {
+          document.body.classList.remove('bg-video-active');
+          if(wrap){ wrap.style.display = 'none'; }
+          if(video){ try { video.pause(); } catch(e){} }
+        }
+        const btn = document.getElementById('toggle-bg');
+        if(btn){
+          btn.textContent = (mode === 'video') ? 'Фон: видео (нажми для фото)' : 'Фон: фото (нажми для видео)';
+        }
+      }
+
+      const UI_KEY = 'qd_ui_hidden'; // '1' hidden, '0' shown
+
+      function applyUI(hidden){
+        const isHidden = hidden === '1' || hidden === 1 || hidden === true;
+        if(isHidden){
+          document.body.classList.add('ui-hidden');
+        } else {
+          document.body.classList.remove('ui-hidden');
+        }
+        const btnUI = document.getElementById('toggle-ui');
+        if(btnUI){
+          btnUI.textContent = isHidden ? 'Показать интерфейс' : 'Скрыть интерфейс';
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', function(){
+        // Default to image unless user chose otherwise
+        let mode = localStorage.getItem(KEY) || 'image';
+        apply(mode);
+        const btn = document.getElementById('toggle-bg');
+        if(btn){
+          btn.addEventListener('click', function(){
+            const current = localStorage.getItem(KEY) || 'image';
+            const next = (current === 'image') ? 'video' : 'image';
+            localStorage.setItem(KEY, next);
+            apply(next);
+          });
+        }
+
+        let uiHidden = localStorage.getItem(UI_KEY) || '0';
+        applyUI(uiHidden);
+
+        const btnUI = document.getElementById('toggle-ui');
+        if(btnUI){
+          btnUI.addEventListener('click', function(){
+            const current = localStorage.getItem(UI_KEY) || '0';
+            const next = (current === '1') ? '0' : '1';
+            localStorage.setItem(UI_KEY, next);
+            applyUI(next);
+          });
+        }
+
+        const restoreBtn = document.getElementById('ui-restore-btn');
+        if(restoreBtn){
+          restoreBtn.addEventListener('click', function(){
+            localStorage.setItem(UI_KEY, '0');
+            applyUI('0');
+          });
+        }
+      });
+    })();
+  </script>
+  <script>
+    (function(){
+      const loader = document.getElementById('page-loader');
+      const MIN_SHOW_MS = 450; // чтобы не мигало
+      let shownAt = 0, showTimer = null, hideTimer = null, lockCount = 0;
+      function resetLoader(){
+        lockCount = 0;
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+        loader.classList.remove('show');
+      }
+
+      function _reallyShow(){
+        if (!loader.classList.contains('show')){
+          loader.classList.add('show');
+          shownAt = Date.now();
+        }
+      }
+      function _reallyHide(){ loader.classList.remove('show'); }
+
+      function showLoader(msg){
+        lockCount++;
+        if (msg && loader){
+          const t = loader.querySelector('.loader-text');
+          if (t) t.textContent = msg;
+        }
+        clearTimeout(hideTimer);
+        showTimer = setTimeout(_reallyShow, 0);
+      }
+      function hideLoader(){
+        lockCount = Math.max(0, lockCount - 1);
+        if (lockCount > 0) return;
+        clearTimeout(showTimer);
+        const elapsed = Date.now() - shownAt;
+        const delay = Math.max(0, MIN_SHOW_MS - elapsed);
+        hideTimer = setTimeout(_reallyHide, delay);
+      }
+
+      // Экспорт в глобал
+      window.SiteLoader = { show: showLoader, hide: hideLoader };
+
+      // Показ при загрузке страницы
+      document.addEventListener('DOMContentLoaded', function(){
+        const nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || null;
+        const isBFCache = !!(nav && nav.type === 'back_forward');
+        if (!isBFCache){
+          showLoader('Загружаем страницу…');
+        }
+      });
+      window.addEventListener('pageshow', function(e){
+        // If restored from BFCache or history traversal, ensure loader is hidden instantly
+        const fromBF = e.persisted || ((performance.getEntriesByType && performance.getEntriesByType('navigation')[0])?.type === 'back_forward');
+        if (fromBF){ resetLoader(); }
+      });
+      document.addEventListener('visibilitychange', function(){
+        if (document.visibilityState === 'visible'){
+          // If we somehow returned with overlay shown, drop it
+          if (loader.classList.contains('show')) resetLoader();
+        }
+      });
+      window.addEventListener('load', function(){
+        setTimeout(hideLoader, 150);
+      });
+
+      // Показ при клике по «медленным» ссылкам и сабмите форм
+      document.addEventListener('click', function(e){
+        const a = e.target.closest('a');
+        if (!a) return;
+
+        // If link explicitly marked as slow → always show loader and delay navigation a bit to allow paint
+        const explicitSlow = a.matches('.slow-link, [data-slow], .slow-nav, [data-slow-nav]');
+
+        // Heuristic: internal heavy pages (VQA / UUD / manage-post-visibility / mes/dashboard / uud_report) even without classes
+        const isSameOrigin = a.origin === window.location.origin;
+        const href = (a.getAttribute('href')||'');
+        const looksHeavy = isSameOrigin && (
+          /\/vqa(\/?|[?#]|$)/.test(href) ||
+          /\/uud(\/?|[?#]|$)/.test(href) ||
+          /\/users\/(manage-post-visibility)(\/?|[?#]|$)/.test(href) ||
+          /\/users\/(mes\/dashboard)(\/?|[?#]|$)/.test(href) ||
+          /\/users\/(uud_report)(\/?|[?#]|$)/.test(href)
+        );
+
+        if (explicitSlow || looksHeavy){
+          // If it opens in new tab or has download, do not block
+          const target = a.getAttribute('target');
+          const hasMod = e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
+          const download = a.hasAttribute('download');
+          if (target === '_blank' || hasMod || download){
+            showLoader('Открываем раздел…');
+            return; // let browser handle
+          }
+          e.preventDefault();
+          showLoader('Открываем раздел…');
+          // small delay to ensure the overlay paints before navigation
+          setTimeout(()=>{ window.location.href = a.href; }, 80);
+          return;
+        }
+
+        // Fallback: just show loader if author explicitly marked as slow (data-slow) without delaying navigation
+        if (a.matches('[data-slow]')){
+          showLoader('Открываем раздел…');
+        }
+      });
+      document.addEventListener('submit', function(e){
+        const form = e.target;
+        if (!form) return;
+        const explicitSlow = form.matches('.slow-form, [data-slow], .slow-form-nav, [data-slow-nav]');
+        if (explicitSlow){
+          e.preventDefault();
+          showLoader('Обработка данных…');
+          setTimeout(()=> form.submit(), 80);
+          return;
+        }
+      });
+
+      // Обертка над fetch для индикации загрузки (используйте вместо fetch)
+      const _fetch = window.fetch.bind(window);
+      window.fetchWithLoader = function(url, opts={}, message='Подтягиваем данные…'){
+        showLoader(message);
+        return _fetch(url, opts).finally(hideLoader);
+      };
+
+      // Хуки HTMX (если используется)
+      document.body.addEventListener && document.body.addEventListener('htmx:beforeRequest', ()=> showLoader('Обновляем данные…'));
+      document.body.addEventListener && document.body.addEventListener('htmx:afterOnLoad', ()=> hideLoader());
+      document.body.addEventListener && document.body.addEventListener('htmx:responseError', ()=> hideLoader());
+    })();
+  </script>
+
+
+</body></html>

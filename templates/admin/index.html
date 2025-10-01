@@ -1,0 +1,279 @@
+{% extends "admin/base_site.html" %}
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  /* === Global overrides for dark admin readability === */
+  /* Select2 (Jazzmin uses Bootstrap 5 theme) */
+  .select2-container--bootstrap-5 .select2-selection--single,
+  .select2-container--bootstrap-5 .select2-selection--multiple {
+    background-color: #1f2937; /* slate-800 */
+    color: #ffffff;
+    border-color: #374151;
+  }
+  .select2-container--bootstrap-5 .select2-selection__rendered {
+    color: #ffffff;
+  }
+  .select2-container--bootstrap-5 .select2-dropdown {
+    background-color: #1f2937;
+    color: #ffffff;
+    border-color: #374151;
+  }
+  .select2-container--bootstrap-5 .select2-results__options {
+    background-color: #1f2937;
+    color: #ffffff;
+  }
+  .select2-container--bootstrap-5 .select2-results__option {
+    color: #ffffff;
+  }
+  .select2-container--bootstrap-5 .select2-results__option--selected {
+    background-color: #374151; /* slate-700 */
+    color: #ffffff;
+  }
+  .select2-container--bootstrap-5 .select2-results__option--highlighted {
+    background-color: #4b5563; /* slate-600 */
+    color: #ffffff;
+  }
+  .select2-container--bootstrap-5 .select2-search__field {
+    background-color: #111827; /* slate-900 */
+    color: #ffffff;
+    border-color: #374151;
+  }
+
+  /* Generic <select> fallback — scoped to normal form selects only (не трогаем список прав) */
+  .jazzmin .form-select {
+    background-color: #1f2937; /* slate-800 */
+    color: #ffffff;
+    border-color: #374151;
+  }
+  .jazzmin .form-select:focus {
+    background-color: #111827; /* slate-900 */
+    color: #ffffff;
+    border-color: #4b5563;
+  }
+
+  /* Bootstrap dropdowns used by Jazzmin filters */
+  .dropdown-menu { background-color: #1f2937; color: #ffffff; border-color:#374151; }
+  .dropdown-menu .dropdown-item { color: #ffffff; }
+  .dropdown-menu .dropdown-item:hover, .dropdown-menu .dropdown-item:focus {
+    background-color: #374151; color: #ffffff;
+  }
+
+  /* Django admin / Jazzmin filter dropdown search input and generic inputs */
+  .dropdown-menu .form-control,
+  .dropdown-menu .form-select,
+  .form-control,
+  .form-select {
+    background-color: #1f2937; /* slate-800 */
+    color: #ffffff;
+    border-color: #374151;
+  }
+  .dropdown-menu .form-control:focus,
+  .dropdown-menu .form-select:focus,
+  .form-control:focus,
+  .form-select:focus {
+    background-color: #111827; /* slate-900 */
+    color: #ffffff;
+    border-color: #4b5563;
+    box-shadow: none;
+  }
+  /* placeholders */
+  .dropdown-menu .form-control::placeholder,
+  .form-control::placeholder,
+  .select2-container--bootstrap-5 .select2-search__field::placeholder {
+    color: #9ca3af; /* slate-400 */
+    opacity: 1;
+  }
+
+  /* ==== Strong overrides for Jazzmin dropdowns (readability) ==== */
+  /* Force LIGHT dropdowns for filters */
+  .jazzmin .dropdown-menu { background-color: #ffffff !important; color: #111827 !important; border-color: #e5e7eb !important; }
+  .jazzmin .dropdown-menu .dropdown-item { color: #111827 !important; }
+  .jazzmin .dropdown-menu .dropdown-item:hover,
+  .jazzmin .dropdown-menu .dropdown-item:focus { background-color: #f3f4f6 !important; color: #111827 !important; }
+
+  /* Inputs inside dropdowns */
+  .jazzmin .dropdown-menu .form-control,
+  .jazzmin .dropdown-menu .form-select { background-color: #ffffff !important; color: #111827 !important; border-color: #d1d5db !important; }
+  .jazzmin .dropdown-menu .form-control::placeholder { color: #6b7280 !important; }
+
+  /* Select2 dropdowns */
+  .jazzmin .select2-container--bootstrap-5 .select2-dropdown { background-color: #ffffff !important; color: #111827 !important; border-color: #e5e7eb !important; }
+  .jazzmin .select2-container--bootstrap-5 .select2-results__option { color: #111827 !important; }
+  .jazzmin .select2-container--bootstrap-5 .select2-results__option--selected { background-color: #e5e7eb !important; color: #111827 !important; }
+  .jazzmin .select2-container--bootstrap-5 .select2-results__option--highlighted { background-color: #f3f4f6 !important; color: #111827 !important; }
+
+  /* ==== Bootstrap-Select (used by Jazzmin filters) ==== */
+  .bootstrap-select .dropdown-menu { background-color: #ffffff !important; color: #111827 !important; border-color: #e5e7eb !important; }
+  .bootstrap-select .dropdown-menu .inner { background-color: #ffffff !important; }
+  .bootstrap-select .dropdown-menu .dropdown-item { color: #111827 !important; }
+  .bootstrap-select .dropdown-menu .dropdown-item.active,
+  .bootstrap-select .dropdown-menu .dropdown-item:active,
+  .bootstrap-select .dropdown-menu .dropdown-item:hover { background-color: #f3f4f6 !important; color: #111827 !important; }
+  .bootstrap-select .bs-searchbox .form-control { background-color: #ffffff !important; color: #111827 !important; border-color: #d1d5db !important; }
+  .bootstrap-select .bs-searchbox .form-control::placeholder { color: #6b7280 !important; }
+
+  /* Django list-filter dropdown (admin-list-filter-dropdown package style) */
+  .filter-dropdown .dropdown-menu,
+  .list-filter-dropdown .dropdown-menu { background-color: #ffffff !important; color: #111827 !important; border-color: #e5e7eb !important; }
+  .filter-dropdown .dropdown-menu .form-control,
+  .list-filter-dropdown .dropdown-menu .form-control { background-color: #ffffff !important; color: #111827 !important; border-color: #d1d5db !important; }
+  .filter-dropdown .dropdown-menu .dropdown-item,
+  .list-filter-dropdown .dropdown-menu .dropdown-item { color: #111827 !important; }
+  .filter-dropdown .dropdown-menu .dropdown-item:hover,
+  .list-filter-dropdown .dropdown-menu .dropdown-item:hover { background-color: #f3f4f6 !important; color: #111827 !important; }
+
+  /* Force Bootstrap variables in case theme variables override */
+  :root { --bs-dropdown-bg: #ffffff; --bs-dropdown-color: #111827; }
+
+  /* ===== FINAL HARD OVERRIDES for dropdown readability ===== */
+  /* Generic: make ALL text inside dropdowns dark on light bg */
+  .jazzmin .dropdown-menu, .jazzmin .dropdown-menu * { color: #111827 !important; }
+
+  /* Bootstrap-Select item text */
+  .bootstrap-select .dropdown-menu li a { color: #111827 !important; }
+  .bootstrap-select .dropdown-menu li a span.text { color: #111827 !important; }
+  .bootstrap-select .dropdown-menu li small.text-muted { color: #4b5563 !important; }
+  .bootstrap-select .dropdown-menu .no-results { color: #111827 !important; }
+  .bootstrap-select .dropdown-header { background-color: #ffffff !important; color: #6b7280 !important; }
+
+  /* Hover/active states */
+  .bootstrap-select .dropdown-menu li a:hover,
+  .bootstrap-select .dropdown-menu li a:focus,
+  .bootstrap-select .dropdown-menu .dropdown-item:hover,
+  .bootstrap-select .dropdown-menu .dropdown-item:focus { background-color: #f3f4f6 !important; color: #111827 !important; }
+
+  /* Django list filter dropdowns */
+  .filter-dropdown .dropdown-menu a,
+  .list-filter-dropdown .dropdown-menu a { color: #111827 !important; }
+
+  /* Ensure search input inside dropdown is light */
+  .jazzmin .dropdown-menu .bs-searchbox .form-control,
+  .bootstrap-select .bs-searchbox .form-control { background-color: #ffffff !important; color: #111827 !important; border-color: #d1d5db !important; }
+
+  /* ===== NUCLEAR FIX: force LIGHT background and DARK text on all dropdown surfaces ===== */
+  .jazzmin .dropdown-menu,
+  .jazzmin .dropdown-menu .inner,
+  .jazzmin .dropdown-menu .dropdown-menu,
+  .jazzmin .dropdown-menu li,
+  .jazzmin .dropdown-menu li a,
+  .jazzmin .dropdown-menu li a .text,
+  .bootstrap-select .dropdown-menu,
+  .bootstrap-select .dropdown-menu .inner,
+  .bootstrap-select .dropdown-menu li,
+  .bootstrap-select .dropdown-menu li a,
+  .bootstrap-select .dropdown-menu li a .text {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  /* Search box wrapper in bootstrap-select */
+  .jazzmin .dropdown-menu .bs-searchbox,
+  .bootstrap-select .bs-searchbox { background-color: #ffffff !important; }
+
+  /* === Force readable dropdowns: white text on dark bg (fallback) === */
+  .jazzmin .dropdown-menu,
+  .bootstrap-select .dropdown-menu,
+  .bootstrap-select .dropdown-menu .inner,
+  .filter-dropdown .dropdown-menu,
+  .list-filter-dropdown .dropdown-menu { background-color: #1f2937 !important; color: #ffffff !important; }
+
+  .jazzmin .dropdown-menu .dropdown-item,
+  .bootstrap-select .dropdown-menu li a,
+  .bootstrap-select .dropdown-menu .dropdown-item,
+  .filter-dropdown .dropdown-menu .dropdown-item,
+  .list-filter-dropdown .dropdown-menu .dropdown-item { color: #ffffff !important; }
+
+  .jazzmin .dropdown-menu .dropdown-item:hover,
+  .bootstrap-select .dropdown-menu li a:hover,
+  .bootstrap-select .dropdown-menu .dropdown-item:hover,
+  .filter-dropdown .dropdown-menu .dropdown-item:hover,
+  .list-filter-dropdown .dropdown-menu .dropdown-item:hover { background-color: #374151 !important; color: #ffffff !important; }
+
+  /* Search input inside dropdown */
+  .jazzmin .dropdown-menu .bs-searchbox .form-control,
+  .bootstrap-select .bs-searchbox .form-control,
+  .filter-dropdown .dropdown-menu .form-control,
+  .list-filter-dropdown .dropdown-menu .form-control { background-color: #111827 !important; color: #ffffff !important; border-color: #4b5563 !important; }
+
+  /* ===== Permissions selector (FilteredSelectMultiple) — force LIGHT listboxes ===== */
+  .jazzmin .selector select,
+  .jazzmin .selector .selector-available select.filtered,
+  .jazzmin .selector .selector-chosen select.filtered {
+    background-color: #ffffff !important;  /* light bg so text is visible */
+    color: #111827 !important;              /* dark text */
+    border-color: #d1d5db !important;
+  }
+  /* option items */
+  .jazzmin .selector select option {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+  /* selected/hovered options */
+  .jazzmin .selector select option:checked,
+  .jazzmin .selector select option:hover {
+    background-color: #e5e7eb !important;   /* subtle highlight */
+    color: #111827 !important;
+  }
+  /* focus ring */
+  .jazzmin .selector select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59,130,246,.35);
+    border-color: #93c5fd !important;
+  }
+  /* ensure filter inputs above listboxes also stay light */
+  .jazzmin .selector .selector-filter input[type="text"] {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border-color: #d1d5db !important;
+  }
+
+  /* ===== Absolute fix for Django permissions dual select (no Jazzmin prefix) ===== */
+  /* Target by explicit IDs used by Django's FilteredSelectMultiple */
+  #id_user_permissions_from,
+  #id_user_permissions_to,
+  #id_user_permissions_old,
+  #id_user_permissions_new {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border-color: #d1d5db !important;
+  }
+  #id_user_permissions_from option,
+  #id_user_permissions_to option,
+  #id_user_permissions_old option,
+  #id_user_permissions_new option {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+  #id_user_permissions_from option:checked,
+  #id_user_permissions_to option:checked,
+  #id_user_permissions_old option:checked,
+  #id_user_permissions_new option:checked {
+    background-color: #e5e7eb !important;
+    color: #111827 !important;
+  }
+  /* Filter input above the listboxes */
+  #id_user_permissions_filter input[type="text"] {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border-color: #d1d5db !important;
+  }
+
+  /* Final pin: readable текст в селекторах прав */
+  .selector select,
+  .selector select option,
+  #id_user_permissions_from,
+  #id_user_permissions_to,
+  #id_user_permissions_old,
+  #id_user_permissions_new,
+  #id_user_permissions_from option,
+  #id_user_permissions_to option,
+  #id_user_permissions_old option,
+  #id_user_permissions_new option {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+    text-shadow: none !important;
+    border-color: #d1d5db !important;
+  }
+</style>
+{% endblock %}

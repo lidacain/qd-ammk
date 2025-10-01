@@ -1,0 +1,108 @@
+{% extends "users/base.html" %}
+
+{% block title %}История экспорта сотрудников{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center mb-4">📦 История экспортов</h2>
+
+    {% if history %}
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Имя файла</th>
+                    <th>Дата экспорта</th>
+                    <th>Кол-во записей</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in history %}
+                <tr>
+                    <td>{{ record.file_name }}</td>
+                    <td>{{ record.export_date|date:"d.m.Y H:i" }}</td>
+                    <td>{{ record.record_count }}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#detailsModal{{ record.id }}">
+                                🔍 Детали
+                            </button>
+                            <a href="{% url 're_export_excel' record.id %}" class="btn btn-success">
+                                🔁 Экспорт
+                            </a>
+                            <a href="{% url 'load_export_to_selection' record.id %}" class="btn btn-primary">
+                                📝 В список
+                            </a>
+                            <a href="{% url 'edit_export_history' record.id %}" class="btn btn-warning">
+                                ✏️ Имя
+                            </a>
+                            <a href="{% url 'delete_export_history' record.id %}" class="btn btn-danger">
+                                🗑️
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Детали модальные окна -->
+    {% for record in history %}
+    <div class="modal fade" id="detailsModal{{ record.id }}" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Детали экспорта: {{ record.file_name }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Дата:</strong> {{ record.export_date|date:"d.m.Y H:i" }}</p>
+                    <p><strong>Количество записей:</strong> {{ record.record_count }}</p>
+
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Сотрудник</th>
+                                    <th>Должность</th>
+                                    <th>Отдел</th>
+                                    <th>Дата</th>
+                                    <th>ХТК</th>
+                                    <th>Часы</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in record.get_data_as_list %}
+                                <tr>
+                                    <td>{{ item.Сотрудник|default:item.Name }}</td>
+                                    <td>{{ item.Должность|default:item.Position }}</td>
+                                    <td>{{ item.Отдел|default:item.Department }}</td>
+                                    <td>{{ item.Дата|default:item.Selected_Date }}</td>
+                                    <td>{{ item.ХТК|default:"Нет" }}</td>
+                                    <td>{{ item.Часы|default:"8" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <a href="{% url 'load_export_to_selection' record.id %}" class="btn btn-primary">📝 В список</a>
+                    <a href="{% url 're_export_excel' record.id %}" class="btn btn-success">🔁 Экспорт</a>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="alert alert-info">Пока нет истории экспортов.</div>
+    {% endif %}
+
+    <div class="mt-4">
+        <a href="{% url 'employee_search' %}" class="btn btn-secondary">⬅️ Назад к выбору сотрудников</a>
+    </div>
+</div>
+{% endblock %}

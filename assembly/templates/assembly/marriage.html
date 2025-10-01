@@ -1,0 +1,394 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Пост — Marriage{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:720px">
+  <h4 class="mb-3">Пост — Marriage</h4>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post" action="">
+    {% csrf_token %}
+
+    <!-- VIN -->
+    <div class="mb-3 position-relative">
+      <label class="form-label">VIN код</label>
+      <div class="position-relative" style="width:100%;">
+        <input
+          type="text"
+          id="vin_search"
+          name="vin_number"
+          class="form-control"
+          placeholder="Введите VIN..."
+          maxlength="17"
+          autocomplete="off"
+        >
+        <span id="clear_vin_search"
+              style="position:absolute; right:10px; top:50%; transform:translateY(-50%);
+                     cursor:pointer; display:none; font-size:18px;">❌</span>
+      </div>
+
+      <button type="button" id="start_qr_scan" class="btn btn-primary mt-2">
+        <i class="bi bi-qr-code-scan"></i> Сканировать QR
+      </button>
+      <div id="qr-reader" style="width:300px; display:none;"></div>
+    </div>
+
+    <!-- Карточка с данными о машине (из трейсинга) -->
+    <div id="trace_data_container" class="card mb-3" style="display:none;">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <strong class="me-2">VIN:</strong>
+          <span id="vin_value">—</span>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-6">
+            <div class="small text-muted">Модель</div>
+            <div id="model_value" class="fw-semibold">—</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">Цвет кузова</div>
+            <div id="body_color_value" class="fw-semibold">—</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">Тип привода</div>
+            <div id="drive_type_value" class="fw-semibold">—</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">Двигатель (из трейсинга)</div>
+            <div id="engine_number_value" class="fw-semibold">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Поля для ввода -->
+    <div class="mb-3">
+      <label class="form-label">Номер двигателя</label>
+      <input
+        type="text"
+        id="engine_number_input"
+        name="engine_number"
+        class="form-control"
+        placeholder="Введите номер двигателя…"
+        autocomplete="off"
+      >
+    </div>
+
+    <div class="mb-4">
+      <label class="form-label">Номер трансмиссии</label>
+      <input
+        type="text"
+        id="transmission_number_input"
+        name="transmission_number"
+        class="form-control"
+        placeholder="Введите номер трансмиссии…"
+        autocomplete="off"
+      >
+    </div>
+
+    <!-- Сохранить -->
+    <div class="d-flex justify-content-end">
+      <button type="submit" class="btn btn-success">
+        <i class="bi bi-check2-circle"></i> Сохранить
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- QR -->
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+// =======================
+// Настройки / DOM-ссылки
+// =======================
+const VIN_SUGGEST_ENDPOINTS = ["/assembly/api/search_vin/"];   // автоподсказки
+const VIN_API = "/assembly/api/vin-lookup/";                   // полная карточка по VIN
+
+const vinInput   = document.getElementById("vin_search");
+const clearBtn   = document.getElementById("clear_vin_search");
+const qrBtn      = document.getElementById("start_qr_scan");
+const qrReaderEl = document.getElementById("qr-reader");
+
+const traceBox   = document.getElementById("trace_data_container");
+const vinValueEl = document.getElementById("vin_value");
+const modelEl    = document.getElementById("model_value");
+const colorEl    = document.getElementById("body_color_value");
+const driveEl    = document.getElementById("drive_type_value");
+const engineFromTraceEl = document.getElementById("engine_number_value");
+
+const engineInput = document.getElementById("engine_number_input");
+const transInput  = document.getElementById("transmission_number_input");
+
+let suggestBox = null;
+let qrInstance = null;
+
+function debounce(fn, ms) {
+  let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+function extractVinFromText(text) {
+  if (!text) return "";
+  const upper = String(text).toUpperCase();
+  const m = upper.match(/[A-Z0-9]{17}/);
+  return m ? m[0] : upper.replace(/[^A-Z0-9]/g, "").slice(0, 17);
+}
+
+function isMeaningful(v) {
+  if (v === undefined || v === null) return false;
+  const s = String(v).trim();
+  if (!s) return false;
+  const bad = ["-", "—", "n/a", "na", "none", "null", "нет"];
+  return !bad.includes(s.toLowerCase());
+}
+
+// =======================
+// Подсказки VIN
+// =======================
+function ensureSuggestBox() {
+  if (suggestBox) return suggestBox;
+  const wrapper = vinInput.parentElement;
+  const box = document.createElement("div");
+  box.id = "vin_suggest";
+  box.className = "list-group position-absolute w-100";
+  box.style.zIndex = "1000";
+  box.style.maxHeight = "240px";
+  box.style.overflow = "auto";
+  box.style.display = "none";
+  box.style.top = "100%";
+  box.style.left = "0";
+  wrapper.appendChild(box);
+  suggestBox = box;
+  return suggestBox;
+}
+
+async function fetchVinSuggestions(q) {
+  const paramNames = ["q", "term", "query", "search"];
+  for (const base of VIN_SUGGEST_ENDPOINTS) {
+    for (const pname of paramNames) {
+      const url = `${base}?${pname}=${encodeURIComponent(q)}`;
+      try {
+        const r = await fetch(url, { headers: { "Accept":"application/json", "X-Requested-With":"XMLHttpRequest" }, credentials:"same-origin" });
+        if (!r.ok) continue;
+        const text = await r.text();
+        let data; try { data = JSON.parse(text); } catch { continue; }
+        let arr = [];
+        if (Array.isArray(data)) arr = data;
+        else if (Array.isArray(data.results)) arr = data.results;
+        else if (Array.isArray(data.items)) arr = data.items;
+        else if (Array.isArray(data.vins)) arr = data.vins;
+        else if (Array.isArray(data.suggestions)) arr = data.suggestions;
+        if (arr.length) return arr.slice(0, 12);
+      } catch (e) {}
+    }
+  }
+  return [];
+}
+
+const renderSuggestions = debounce(async function(q) {
+  const box = ensureSuggestBox();
+  if (!q || q.length < 1) {
+    box.style.display = "none";
+    box.innerHTML = "";
+    return;
+  }
+  try {
+    const items = await fetchVinSuggestions(q);
+    if (!items.length) {
+      box.style.display = "none";
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = "";
+    items.forEach((item) => {
+      const vin = (typeof item === "string"
+                    ? item
+                    : (item.vin || item.VIN || item.code || item.value || "")
+                  ).toString().toUpperCase();
+      if (!vin) return;
+
+      const subtitle = (typeof item === "object"
+                        ? (item.model || item.Model || item.name || "")
+                        : "");
+      const a = document.createElement("a");
+      a.href = "javascript:void(0)";
+      a.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
+      a.innerHTML = `<span>${vin}</span>${subtitle ? `<small class="text-muted">${subtitle}</small>` : ""}`;
+
+      a.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        vinInput.value = vin;
+        updateClearBtn();
+        box.style.display = "none";
+        box.innerHTML = "";
+        loadVehicleInfo(vin);              // ← подтягиваем карточку без перезагрузки
+      });
+      box.appendChild(a);
+    });
+    box.style.display = "block";
+  } catch (e) {
+    box.style.display = "none";
+    box.innerHTML = "";
+  }
+}, 220);
+
+// =======================
+// Загрузка инфо по VIN
+// =======================
+async function loadVehicleInfo(vin) {
+  const v = (vin || "").trim().toUpperCase();
+  if (!v || v.length < 5) {
+    traceBox.style.display = "none";
+    return;
+  }
+  const aliases = ["vin","vin_number","q","code"];
+  let data = null;
+  for (const pname of aliases) {
+    try {
+      const r = await fetch(`${VIN_API}?${pname}=${encodeURIComponent(v)}`, {
+        headers: { "Accept":"application/json","X-Requested-With":"XMLHttpRequest" },
+        credentials: "same-origin"
+      });
+      if (!r.ok) continue;
+      const text = await r.text();
+      data = JSON.parse(text);
+      break;
+    } catch (_) {}
+  }
+  if (!data) { traceBox.style.display = "none"; return; }
+
+  // нормализация
+  const pick = (o, keys, fallback="—") => {
+    for (const k of keys) {
+      if (k.includes(".")) {
+        const chain = k.split(".");
+        let cur = o;
+        for (const p of chain) cur = (cur && cur[p] !== undefined) ? cur[p] : undefined;
+        if (cur !== undefined && cur !== null && String(cur).trim() !== "") return cur;
+      } else if (o[k] !== undefined && o[k] !== null && String(o[k]).trim() !== "") {
+        return o[k];
+      }
+    }
+    return fallback;
+  };
+  const obj = Array.isArray(data) ? (data[0] || {}) :
+              (data.vehicle || data.result || (Array.isArray(data.results) ? (data.results[0] || {}) : data));
+
+  const VIN_VAL = pick(obj, ["vin","VIN","vin_rk","code","value"], v);
+  const MODEL   = pick(obj, ["model","Model","spec.model"]);
+  const COLOR   = pick(obj, ["body_color","color","paint","spec.color"]);
+  const DRIVE   = pick(obj, ["drive_type","modification","drive","spec.drive"]);
+  const RAW_ENGNO = pick(obj, ["engine_number","engine_no","engineNo","spec.engine"], null);
+
+  vinValueEl.textContent = VIN_VAL || v;
+  modelEl.textContent    = MODEL || "—";
+  colorEl.textContent    = COLOR || "—";
+  driveEl.textContent    = DRIVE || "—";
+  engineFromTraceEl.textContent = isMeaningful(RAW_ENGNO) ? String(RAW_ENGNO) : "—";
+
+  // если поле двигателя у нас пустое — подставим из трейсинга
+  if (isMeaningful(RAW_ENGNO) && !engineInput.value) {
+    engineInput.value = String(RAW_ENGNO);
+  }
+
+  traceBox.style.display = "block";
+}
+
+// =======================
+// QR-сканирование
+// =======================
+async function startQrScan() {
+  if (!window.Html5Qrcode) { alert("QR-сканер недоступен."); return; }
+  if (qrInstance) return;
+  qrReaderEl.style.display = "block";
+  qrBtn.disabled = true;
+  qrBtn.textContent = "Сканирование…";
+
+  qrInstance = new Html5Qrcode("qr-reader");
+  const config = { fps: 10, qrbox: 220 };
+  try {
+    await qrInstance.start(
+      { facingMode: "environment" },
+      config,
+      (decodedText) => {
+        const vin = extractVinFromText(decodedText);
+        if (vin && vin.length >= 8) {
+          stopQrScan();
+          const v17 = vin.slice(0,17);
+          vinInput.value = v17;
+          updateClearBtn();
+          loadVehicleInfo(v17);
+        }
+      },
+      () => {}
+    );
+  } catch (e) {
+    console.error(e);
+    stopQrScan();
+    alert("Не удалось запустить камеру для QR.");
+  }
+}
+async function stopQrScan() {
+  try {
+    if (qrInstance) { await qrInstance.stop(); await qrInstance.clear(); }
+  } catch(e) {}
+  qrInstance = null;
+  qrReaderEl.style.display = "none";
+  qrBtn.disabled = false;
+  qrBtn.innerHTML = '<i class="bi bi-qr-code-scan"></i> Сканировать QR';
+}
+
+// =======================
+// UX VIN-поля
+// =======================
+function updateClearBtn(){ clearBtn.style.display = vinInput.value ? "inline" : "none"; }
+
+vinInput.addEventListener("input", (e) => {
+  const v = e.target.value.toUpperCase();
+  e.target.value = v.replace(/[^A-Z0-9]/g, "").slice(0,17);
+  updateClearBtn();
+  renderSuggestions(e.target.value);
+  if (e.target.value.length === 17) loadVehicleInfo(e.target.value);
+});
+vinInput.addEventListener("focus", () => {
+  if (vinInput.value.length >= 1) renderSuggestions(vinInput.value);
+});
+vinInput.addEventListener("blur", () => {
+  setTimeout(() => { if (suggestBox) suggestBox.style.display = "none"; }, 150);
+});
+clearBtn.addEventListener("click", () => {
+  vinInput.value = "";
+  updateClearBtn();
+  if (suggestBox) { suggestBox.style.display = "none"; suggestBox.innerHTML = ""; }
+  traceBox.style.display = "none";
+});
+qrBtn.addEventListener("click", () => { if (qrInstance) stopQrScan(); else startQrScan(); });
+vinInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (vinInput.value.length >= 8) loadVehicleInfo(vinInput.value);
+  }
+});
+
+// =======================
+// Простейшая валидация перед сабмитом
+// =======================
+document.querySelector("form").addEventListener("submit", (e) => {
+  const vin = (vinInput.value || "").trim();
+  if (vin.length !== 17) {
+    e.preventDefault();
+    vinInput.focus();
+    alert("Введите корректный VIN (17 символов).");
+    return false;
+  }
+  return true;
+});
+</script>
+{% endblock %}

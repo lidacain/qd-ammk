@@ -1,0 +1,11 @@
+{% extends "users/base.html" %}
+
+{% block title %}Пост №{{ post_id }}{% endblock %}
+
+{% block content %}
+<div class="text-center">
+    <h2>Пост №{{ post_id }}</h2>
+    <p>Вы находитесь на странице поста {{ post_id }}.</p>
+    <a href="{% url 'controller_dashboard' %}" class="btn btn-secondary">🔙 Вернуться</a>
+</div>
+{% endblock %}

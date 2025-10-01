@@ -1,0 +1,50 @@
+{% extends "users/base.html" %}
+
+{% block title %}Редактирование экспорта{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4 text-center">✏️ Редактирование записи экспорта</h2>
+
+    <div class="card mx-auto" style="max-width: 600px;">
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="file_name" class="form-label">Имя файла</label>
+                    <input type="text" class="form-control" id="file_name" name="file_name" value="{{ record.file_name }}" required>
+                    <div class="form-text">Это отображаемое имя. Физический файл останется без изменений.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Дата экспорта:</label>
+                    <div class="form-control-plaintext">{{ record.export_date|date:"d.m.Y H:i" }}</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Количество записей:</label>
+                    <div class="form-control-plaintext">{{ record.record_count }}</div>
+                </div>
+
+                {% with record.get_data_as_list|first as first_item %}
+                    {% if first_item %}
+                        <hr>
+                        <label class="form-label">Пример записи:</label>
+                        <ul class="mb-3">
+                            <li>Сотрудник: {{ first_item.Сотрудник|default:first_item.Name }}</li>
+                            <li>Дата: {{ first_item.Дата|default:first_item.Selected_Date }}</li>
+                            <li>ХТК: {{ first_item.ХТК|default:"Нет" }}</li>
+                            <li>Часы: {{ first_item.Часы|default:"8" }}</li>
+                        </ul>
+                    {% endif %}
+                {% endwith %}
+
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'export_history' %}" class="btn btn-secondary">⬅️ Отмена</a>
+                    <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

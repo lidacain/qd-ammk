@@ -1,0 +1,233 @@
+{% extends "users/base.html" %}
+{% block title %}Детали поста{% endblock %}
+
+{% block content %}
+<style>
+  .entry-card{border-radius:14px; overflow:hidden}
+  .entry-head{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; background:#f7f7f9}
+  .head-left{display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center}
+  .badge-pill{border-radius:999px; padding:.25rem .6rem; font-weight:600; font-size:.85rem}
+  .b-ok{background:#1f7a3f; color:#fff}
+  .b-def{background:#c62d2d; color:#fff}
+  .b-miss{background:#5f6673; color:#fff}
+  .b-light{background:#eef0f3; color:#333; border:1px solid #e1e4ea}
+  .meta{color:#6c757d; font-size:.9rem}
+  .label-stack{display:flex; flex-wrap:wrap; gap:8px}
+  .sect-title{font-weight:600; margin-top:14px; margin-bottom:8px}
+  .defect{border:1px solid #eceff3; border-radius:10px; padding:12px}
+  .thumbs img{height:88px; border-radius:8px; margin:4px}
+  .kv{display:flex; gap:8px; align-items:baseline}
+  .kv dt{min-width:140px; color:#6c757d}
+</style>
+
+<div class="container mt-4">
+  <div class="text-left mt-3">
+    <a href="{% url 'vin_tracking_view' vin=vin %}" class="btn btn-outline-secondary">← Назад</a>
+  </div>
+
+  <h3 class="mb-4">Детали поста <strong>{{ post }}</strong> для VIN <strong>{{ vin }}</strong></h3>
+
+  {% if trace_data %}
+    <div class="card mb-4 border-secondary">
+      <div class="card-header bg-secondary text-white">Данные по VIN из трейсинга</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <dl class="kv">
+              <dt>Модель</dt><dd>{{ trace_data.model }}</dd>
+            </dl>
+            <dl class="kv"><dt>Модификация</dt><dd>{{ trace_data.modification }}</dd></dl>
+            <dl class="kv"><dt>Цвет кузова</dt><dd>{{ trace_data.body_color }} / {{ trace_data.color_1c }}</dd></dl>
+            <dl class="kv"><dt>Кузов</dt><dd>{{ trace_data.body_type }}</dd></dl>
+          </div>
+          <div class="col-md-6">
+            <dl class="kv"><dt>Двигатель</dt><dd>{{ trace_data.engine_volume }} см³ • {{ trace_data.engine_power }}</dd></dl>
+            <dl class="kv"><dt>КПП</dt><dd>{{ trace_data.transmission }}</dd></dl>
+            <dl class="kv"><dt>Мест</dt><dd>{{ trace_data.seat_capacity }}</dd></dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if entries %}
+    {% for e in entries %}
+      <div class="card entry-card mb-4 shadow-sm">
+        <div class="entry-head">
+          <div class="head-left">
+            <span class="meta">Дата: {{ e.date|date:"d.m.Y H:i" }}</span>
+            {% if e.controller %}<span class="meta">Контроллер: {{ e.controller }}</span>{% endif %}
+            {% if e.extra.line_display %}<span class="badge-pill b-light">Линия: {{ e.extra.line_display }}</span>{% elif e.extra.line %}<span class="badge-pill b-light">Линия: {{ e.extra.line }}</span>{% endif %}
+            {% if e.extra.container_number %}<span class="badge-pill b-light">Контейнер: {{ e.extra.container_number }}</span>{% endif %}
+            {% if e.extra.kind == 'given' %}<span class="badge-pill b-light">VES — Отдан</span>{% endif %}
+            {% if e.extra.kind == 'received' %}<span class="badge-pill b-light">VES — Принят</span>{% endif %}
+            {% if e.extra.uud_step %}<span class="badge-pill b-light">УУД: Шаг {{ e.extra.uud_step }}</span>{% endif %}
+            {% for lbl in e.labels %}<span class="badge-pill b-light">{{ lbl }}</span>{% endfor %}
+          </div>
+          <div>
+            {% if e.status == 'ok' %}
+              <span class="badge-pill b-ok">OK</span>
+            {% elif e.status == 'defect' %}
+              <span class="badge-pill b-def">DEF{% if e.grade %} {{ e.grade }}{% endif %}</span>
+            {% elif e.status == 'dc_repair' %}
+              <span class="badge-pill b-miss">ДЦ — ремонт</span>
+            {% else %}
+              <span class="badge-pill b-miss">MISSING</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card-body">
+
+          {# ——— Блок: дефекты ——— #}
+          {% if e.defects %}
+            <div class="sect-title">Дефекты</div>
+            <div class="row g-3">
+              {% for d in e.defects %}
+                <div class="col-12 col-md-6">
+                  <div class="defect">
+                    {% if d.grade %}<span class="badge-pill b-def">DEF {{ d.grade }}</span>{% endif %}
+                    {% if d.name %}<div>Дефект: {{ d.name }}</div>{% endif %}
+                    {% if d.zone %}<div>Подсистема: {{ d.zone }}</div>{% endif %}
+                    {% if d.unit %}<div>Деталь: {{ d.unit }}</div>{% endif %}
+                    {% if d.quantity %}<div>Кол-во: {{ d.quantity }}</div>{% endif %}
+                    {% if d.repair_type %}<div>Ремонт: {{ d.repair_type }}</div>{% endif %}
+                    {% if d.comment %}<div>Комментарий: {{ d.comment }}</div>{% endif %}
+
+                    {% if d.extra.responsible %}
+                      <div>Ответственный: {{ d.extra.responsible }}</div>
+                    {% endif %}
+                    {% if d.extra.custom_detail_explanation %}
+                      <div>Комментарий (деталь): {{ d.extra.custom_detail_explanation }}</div>
+                    {% endif %}
+                    {% if d.extra.custom_defect_explanation %}
+                      <div>Комментарий (дефект): {{ d.extra.custom_defect_explanation }}</div>
+                    {% endif %}
+
+                    {# QRR ответственные, если есть #}
+                    {% if d.extra.qrr_responsibles %}
+                      <div>Ответственный от QRR: {{ d.extra.qrr_responsibles|join:", " }}</div>
+                    {% endif %}
+
+                    {# Источник обнаружения (для Документации) #}
+                    {% if d.extra.source_post %}
+                      <div>Обнаружено на посте: {{ d.extra.source_post }}{% if d.extra.source_zone %} — {{ d.extra.source_zone }}{% endif %}</div>
+                    {% endif %}
+
+                    {% if d.extra.detected_by or d.extra.detected_at %}
+                      <div>Обнаружил: {% if d.extra.detected_by %}{{ d.extra.detected_by }}{% endif %}{% if d.extra.detected_at %}{% if d.extra.detected_by %} • {% endif %}{{ d.extra.detected_at|date:"d.m.Y H:i" }}{% endif %}</div>
+                    {% endif %}
+
+                    {% if d.extra.qrr_responsibles %}
+                      <div>Ответственные (QRR): {{ d.extra.qrr_responsibles|join:", " }}</div>
+                    {% endif %}
+
+                    {# Снимок статуса УУД для шагов 3/4 #}
+                    {% if d.extra.uud_snapshot %}
+                      <div>
+                        <span class="badge-pill b-light">UUD: {{ d.extra.uud_snapshot.status|default:"—" }}</span>
+                        {% if d.extra.uud_snapshot.decided_at %}
+                          <span>от {{ d.extra.uud_snapshot.decided_at|date:"d.m.Y H:i" }} {% if d.extra.uud_snapshot.decided_by %} ({{ d.extra.uud_snapshot.decided_by }}){% endif %}</span>
+                        {% endif %}
+                      </div>
+                      {% if d.extra.uud_snapshot.fix_photos %}
+                        <div class="thumbs mt-2">
+                          {% for p in d.extra.uud_snapshot.fix_photos %}
+                            <img src="{{ p }}" onclick="openModal([{% for q in d.extra.uud_snapshot.fix_photos %}'{{ q }}'{% if not forloop.last %}, {% endif %}{% endfor %}], {{ forloop.counter0 }})">
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    {% endif %}
+
+                    {% if d.photos %}
+                      <div class="thumbs mt-2">
+                        {% for p in d.photos %}
+                          <img src="{{ p }}" onclick="openModal([{% for q in d.photos %}'{{ q }}'{% if not forloop.last %}, {% endif %}{% endfor %}], {{ forloop.counter0 }})">
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="meta">Дефектов нет</div>
+          {% endif %}
+
+          {% if e.comment %}
+            <div class="sect-title">Комментарий к записи</div>
+            <div>{{ e.comment }}</div>
+          {% endif %}
+
+          {# ——— Спец-поля: VES #}
+          {% if e.extra.kind == 'received' and e.extra.given_at %}
+            <div class="sect-title">VES</div>
+            <div class="meta">Отдан: {{ e.extra.given_at|date:"d.m.Y H:i" }} • Длительность: {{ e.extra.duration_sec }} сек.</div>
+          {% elif e.extra.kind == 'given' %}
+            <div class="sect-title">VES</div>
+            <div class="meta">На VES • Длительность (на сейчас): {{ e.extra.duration_sec }} сек.</div>
+          {% endif %}
+
+          {# ——— Фото на уровне записи #}
+          {% if e.photos.body or e.photos.component or e.photos.defect %}
+            <div class="sect-title">Фото</div>
+            {% if e.photos.defect %}
+              <div class="meta mb-1">Фото дефектов:</div>
+              <div class="thumbs mb-2">
+                {% for p in e.photos.defect %}
+                  <img src="{{ p }}" onclick="openModal([{% for q in e.photos.defect %}'{{ q }}'{% if not forloop.last %}, {% endif %}{% endfor %}], {{ forloop.counter0 }})">
+                {% endfor %}
+              </div>
+            {% endif %}
+            {% if e.photos.body %}
+              <div class="meta mb-1">Фото кузова:</div>
+              <div class="thumbs mb-2">
+                {% for p in e.photos.body %}
+                  <img src="{{ p }}" onclick="openModal([{% for q in e.photos.body %}'{{ q }}'{% if not forloop.last %}, {% endif %}{% endfor %}], {{ forloop.counter0 }})">
+                {% endfor %}
+              </div>
+            {% endif %}
+            {% if e.photos.component %}
+              <div class="meta mb-1">Фото комплектующих:</div>
+              <div class="thumbs">
+                {% for p in e.photos.component %}
+                  <img src="{{ p }}" onclick="openModal([{% for q in e.photos.component %}'{{ q }}'{% if not forloop.last %}, {% endif %}{% endfor %}], {{ forloop.counter0 }})">
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endif %}
+
+          {# ——— Прочие поля (двигатель/контейнер/и т.п.) #}
+          <div class="row g-3 mt-1">
+            {% if e.extra.engine_number %}
+              <div class="col-auto meta">№ двигателя: {{ e.extra.engine_number }}</div>
+            {% endif %}
+            {% if e.extra.inspection_duration_seconds %}
+              <div class="col-auto meta">Длительность осмотра: {{ e.extra.inspection_duration_seconds }} сек.</div>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="alert alert-warning">Нет данных по этому посту</div>
+  {% endif %}
+</div>
+
+<!-- 🖼 Модальное окно галереи -->
+<div id="image-modal" class="modal" style="display: none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050; background-color: rgba(0,0,0,0.85);">
+  <span class="close" onclick="closeModal()" style="position: absolute; top: 20px; right: 30px; font-size: 40px; color: white; cursor: pointer;">&times;</span>
+  <img id="modal-img" class="modal-content" style="max-height: 90vh; max-width: 90vw; border-radius: 10px;">
+  <button id="prev-btn" class="nav-btn left" onclick="showPrev()" style="position: absolute; top: 50%; left: 20px; font-size: 30px; color: white; background: none; border: none; cursor: pointer;">&#10094;</button>
+  <button id="next-btn" class="nav-btn right" onclick="showNext()" style="position: absolute; top: 50%; right: 20px; font-size: 30px; color: white; background: none; border: none; cursor: pointer;">&#10095;</button>
+</div>
+
+<script>
+  let currentGroup = [];
+  let currentIndex = 0;
+  function openModal(group, index){ currentGroup = group; currentIndex = index; document.getElementById('modal-img').src = currentGroup[currentIndex]; document.getElementById('image-modal').style.display='flex'; }
+  function closeModal(){ document.getElementById('image-modal').style.display='none'; currentGroup=[]; currentIndex=0; }
+  function showPrev(){ if(currentIndex>0){ currentIndex--; document.getElementById('modal-img').src = currentGroup[currentIndex]; }}
+  function showNext(){ if(currentIndex<currentGroup.length-1){ currentIndex++; document.getElementById('modal-img').src = currentGroup[currentIndex]; }}
+</script>
+{% endblock %}

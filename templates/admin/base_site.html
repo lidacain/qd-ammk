@@ -1,0 +1,86 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+  <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}">
+  {{ block.super }}
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+/* Исправление видимости текста и фона в Jazzmin для списков групп/прав */
+.selector select,
+.selector .selector-available select.filtered,
+.selector .selector-chosen select.filtered,
+#id_groups_from, #id_groups_to,
+#id_user_permissions_from, #id_user_permissions_to,
+#id_user_permissions_old, #id_user_permissions_new {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+.selector select option,
+#id_groups_from option, #id_groups_to option,
+#id_user_permissions_from option, #id_user_permissions_to option,
+#id_user_permissions_old option, #id_user_permissions_new option {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+.selector .selector-filter input[type="text"],
+#id_groups_filter input[type="text"],
+#id_user_permissions_filter input[type="text"] {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+
+/* Dropdown меню Jazzmin */
+.jazzmin .dropdown-menu,
+.bootstrap-select .dropdown-menu {
+  background:#ffffff !important;
+  color:#111827 !important;
+  border-color:#e5e7eb !important;
+}
+.jazzmin .dropdown-menu .dropdown-item { color:#111827 !important; }
+.jazzmin .dropdown-menu .dropdown-item:hover { background:#f3f4f6 !important; color:#111827 !important; }
+
+/* ==== UX: расширяем двойные селекторы (группы/права) и делаем их отзывчивыми ==== */
+.form-row .selector, .inline-related .selector, .form-group .selector, .jazzmin .selector {
+  width: 100% !important;
+  max-width: none !important;
+}
+/* Внутренние колонки селектора — 2 равные колонки */
+.jazzmin .selector { display: flex; gap: 12px; }
+.selector .selector-available, .selector .selector-chosen {
+  flex: 1 1 0;
+  width: auto !important;    /* переопределить фиксированную ширину Django */
+  max-width: none !important;
+}
+.selector .selector-chooser { align-self: center; }
+.selector select { width: 100% !important; min-height: 280px; }
+
+/* Разрешаем горизонтальную прокрутку и перенос для длинных опций */
+.selector select { overflow-x: auto; white-space: normal; }
+
+/* ==== UX: делаем textarea растягиваемыми по ширине и высоте ==== */
+textarea, .vLargeTextField {
+  width: 100% !important;
+  max-width: none !important;
+  resize: both;              /* можно тянуть по ширине/высоте */
+  min-height: 220px;
+}
+/* JSON-поля читаемее */
+textarea[name*="history"], textarea[name*="extra_data"], textarea[name*="json"], textarea[id*="id_history"] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+}
+
+/* На очень узких экранах стекаем столбцы под друг друга */
+@media (max-width: 768px) {
+  .jazzmin .selector { flex-direction: column; }
+  .selector .selector-chooser { align-self: stretch; order: 2; }
+}
+</style>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "users/base.html" %}
+
+{% block title %}Экспорт Excel — Пост приемки комлектующих{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <a href="{% url 'incoming_workshop_dashboard' %}" class="btn btn-outline-secondary mb-4">← Назад</a>
+    <h3 class="mb-4 text-center">Экспорт в Excel — Зона приемки комплектующих</h3>
+
+    <form method="get" action="{% url 'vehicle_history:export_parts_acceptance_excel' %}" class="row g-3 justify-content-center">
+        <div class="col-md-4">
+            <label for="start_date" class="form-label">С даты:</label>
+            <input type="date" id="start_date" name="start_date" class="form-control" required>
+        </div>
+        <div class="col-md-4">
+            <label for="end_date" class="form-label">По дату:</label>
+            <input type="date" id="end_date" name="end_date" class="form-control" required>
+        </div>
+        <div class="col-12 text-center">
+            <button type="submit" class="btn btn-success px-5">Скачать Excel</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,652 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% now "Y-m-d" as today_str %}
+
+{% block title %}Статистика схода с линии — таблица дня{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-2 edge-tight">
+  <!-- Header & Filters -->
+  <div class="row align-items-end g-3 mb-3">
+    <div class="col-lg-8">
+      <h2 class="mb-0">Статистика схода с линии</h2>
+      <div class="text-muted">
+        День:
+        {% if prod_date|date:"Y-m-d" == today_str %}
+          <span class="badge bg-success-subtle text-success-emphasis" style="font-weight:600;">{{ prod_date|date:"d.m.Y" }}</span>
+        {% else %}
+          <strong>{{ prod_date|date:"d.m.Y" }}</strong>
+        {% endif %}
+        · Смена: <span class="badge bg-secondary">{{ shift|upper }}</span>
+      </div>
+    </div>
+    {% if can_edit_plans %}
+    <div class="col-lg-4 text-lg-end">
+      <a class="btn btn-outline-primary" href="{% url 'line_stats:plan_editor' %}">Редактор планов</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body pb-1">
+      <form id="filters-form" class="row gy-2 gx-2 align-items-end" method="get">
+        <div class="col-md-auto col-12">
+          <label for="date-input" class="form-label mb-1 small text-muted">Дата</label>
+          <div class="d-flex gap-2">
+            <input id="date-input" name="date" type="date" class="form-control" value="{{ prod_date|date:'Y-m-d' }}">
+            <div class="btn-group" role="group" aria-label="Быстрый выбор даты">
+              <button type="button" class="btn btn-outline-secondary" id="prev-day" title="Вчера">◀</button>
+              <button type="button" class="btn btn-outline-secondary" id="today" title="Сегодня">Сегодня</button>
+              <button type="button" class="btn btn-outline-secondary" id="next-day" title="Завтра">▶</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-auto col-12">
+          <label class="form-label mb-1 small text-muted d-block">Смена</label>
+          <input type="hidden" name="shift" id="shift-input" value="{{ shift }}">
+          <div class="btn-group" role="group" aria-label="Выбор смены">
+            <button type="button" class="btn {% if shift == 's1' %}btn-primary{% else %}btn-outline-primary{% endif %}" data-shift="s1">Первая смена</button>
+            <button type="button" class="btn {% if shift == 's2' %}btn-primary{% else %}btn-outline-primary{% endif %}" data-shift="s2">Вторая смена</button>
+          </div>
+        </div>
+
+        <div class="col-md-auto col-12">
+          <button class="btn btn-primary mt-3 mt-md-0" id="show-btn">Показать</button>
+        </div>
+
+        <div class="col-12">
+          <small class="text-muted">Изменять можно только причины простоя. План/факт/простой рассчитываются автоматически.</small>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <style>
+    .reason-textarea { min-height: 2.25rem; resize: none; line-height: 1.3; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .reason-cell small.reason-hint { display:block; text-align:right; color: var(--bs-secondary-color,#6c757d); }
+    :root{ --reason-w: clamp(120px, 9vw, 200px); }
+    .reason-cell{ min-width: unset; width: var(--reason-w); max-width: var(--reason-w); }
+    /* NEW: vertical header labels for narrow numeric columns */
+    .th-vert{
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      white-space: nowrap;
+      padding: .5rem .25rem;
+      text-align: center;
+      vertical-align: middle;
+    }
+    /* Helper class for centered horizontal headers */
+    .th-center{
+      text-align: center;
+      vertical-align: middle;
+    }
+    /* NEW: narrow numeric cells */
+    .col-narrow{ width: 44px; min-width: 44px; }
+    /* Make the whole table fit without horizontal scroll */
+    .table-container{ overflow-x: visible; }
+    #offtake-table td, #offtake-table th{ padding: .35rem .35rem; }
+    #offtake-table tbody{ font-size: .9rem; }
+    #offtake-table thead th{ font-size: .85rem; }
+    #offtake-table .reason-cell .form-control{ font-size: .9rem; }
+    /* Allow long author names to wrap */
+    #offtake-table td, #offtake-table th{ word-break: break-word; }
+    /* Sticky left column (Время) */
+    .sticky-col{ position: sticky; left: 0; background: var(--bs-body-bg, #fff); z-index: 6; box-shadow: inset -1px 0 0 rgba(0,0,0,.08); }
+    thead .sticky-col{ z-index: 9; }
+    tfoot .sticky-col{ z-index: 7; }
+    .badge-now{ font-size: .65rem; vertical-align: middle; }
+    /* Uniform slot subtext (below time) */
+    .slot-note-row{ display:block; margin-top:.15rem; }
+    .slot-pill{
+      display:inline-block;
+      padding:.15rem .45rem;
+      border-radius:999px;
+      font-size:.75rem;
+      line-height:1;
+      background: var(--bs-secondary-bg, #f1f3f5);
+      color: var(--bs-secondary-color, #6c757d);
+      min-width: 60px; /* одинаковая длина бейджа */
+      text-align:center;
+      white-space: nowrap;
+    }
+    /* Per-line coloring */
+    .colhead{ font-weight: 600; }
+    .col-gwm{ background: #ffe8e6; }
+    thead .col-gwm, .colhead.col-gwm{ background: #ffd7d3; }
+
+    .col-chery{ background: #e9f2ff; }
+    thead .col-chery, .colhead.col-chery{ background: #d8e8ff; }
+
+    .col-changan{ background: #f3f4f6; }
+    thead .col-changan, .colhead.col-changan{ background: #e7e9ee; }
+
+    .col-pdi{ background: #fff6cc; }
+    thead .col-pdi, .colhead.col-pdi{ background: #ffef99; }
+    /* Today highlight for date input */
+    #date-input.is-today{ background: #e9fbe9; border-color: #b8e5b8; }
+    .btn-cell{ background: transparent; border: 1px solid rgba(0,0,0,.15); }
+
+    /* Save buttons colors per line (match header shades) */
+    .btn-save-gwm{ background:#ffd7d3; border-color:#ffc6c1; color:#212529; }
+    .btn-save-gwm:hover{ filter: brightness(0.95); }
+
+    .btn-save-frame{ background:#f8f9fa; border-color:#e9ecef; color:#212529; }
+    .btn-save-frame:hover{ filter: brightness(0.95); }
+
+    .btn-save-chery{ background:#d8e8ff; border-color:#c4dcff; color:#212529; }
+    .btn-save-chery:hover{ filter: brightness(0.95); }
+
+    .btn-save-changan{ background:#e7e9ee; border-color:#d7dbe3; color:#212529; }
+    .btn-save-changan:hover{ filter: brightness(0.95); }
+    .messages-container{ position: fixed; top: 1rem; right: 1rem; width: min(420px, 90vw); z-index: 1080; }
+
+    /* Softer controls in filters header */
+    #filters-form .btn.btn-primary{
+      background: rgba(13,110,253,.16); /* soft blue */
+      border-color: rgba(13,110,253,.35);
+      color: #0d6efd;
+      box-shadow: none;
+    }
+    #filters-form .btn.btn-primary:hover{
+      background: rgba(13,110,253,.28);
+      border-color: rgba(13,110,253,.45);
+      color: #0a58ca;
+    }
+    #filters-form .btn.btn-outline-primary{
+      color: #0d6efd;
+      border-color: rgba(13,110,253,.35);
+      box-shadow: none;
+    }
+    #filters-form .btn.btn-outline-primary:hover{
+      background: rgba(13,110,253,.08);
+      border-color: rgba(13,110,253,.45);
+      color: #0a58ca;
+    }
+    /* Make prev/next/today group buttons a bit softer too */
+    #filters-form .btn-group .btn{ box-shadow:none; }
+    /* Make the main container truly edge-to-edge (minimal side padding) */
+    .container-fluid.edge-tight{
+      /* break out of any centered parent max-width */
+      width: 99vw;
+      margin-left: calc(50% - 50vw);
+      margin-right: calc(50% - 50vw);
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    @media (min-width: 1200px){
+      .container-fluid.edge-tight{
+        padding-left: 12px;
+        padding-right: 12px;
+      }
+    }
+    /* Ensure the table card spans full available width */
+    .card > .table-container{ width: 100%; }
+  </style>
+
+  <script>
+    (function(){
+      const form = document.getElementById('filters-form');
+      const dateInput = document.getElementById('date-input');
+      const shiftInput = document.getElementById('shift-input');
+      const TODAY = '{{ today_str }}';
+      if (dateInput && dateInput.value === TODAY){ dateInput.classList.add('is-today'); }
+
+      // Авто-сабмит при изменении даты
+      dateInput && dateInput.addEventListener('change', () => {
+        if (dateInput.value === TODAY){ dateInput.classList.add('is-today'); } else { dateInput.classList.remove('is-today'); }
+        form.submit();
+      });
+
+      // Кнопки смен
+      document.querySelectorAll('[data-shift]')?.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const sel = btn.getAttribute('data-shift');
+          if (!sel) return;
+          shiftInput.value = sel;
+          form.submit();
+        });
+      });
+
+      // Быстрое переключение дат
+      function shiftDate(days){
+        const d = new Date(dateInput.value || '{{ prod_date|date:'Y-m-d' }}');
+        d.setDate(d.getDate() + days);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth()+1).padStart(2,'0');
+        const dd = String(d.getDate()).padStart(2,'0');
+        dateInput.value = `${yyyy}-${mm}-${dd}`;
+        form.submit();
+      }
+      document.getElementById('prev-day')?.addEventListener('click', ()=>shiftDate(-1));
+      document.getElementById('next-day')?.addEventListener('click', ()=>shiftDate(1));
+      document.getElementById('today')?.addEventListener('click', ()=>{
+        const t = new Date();
+        const yyyy = t.getFullYear();
+        const mm = String(t.getMonth()+1).padStart(2,'0');
+        const dd = String(t.getDate()).padStart(2,'0');
+        dateInput.value = `${yyyy}-${mm}-${dd}`;
+        form.submit();
+      });
+    })();
+  </script>
+
+  {% if can_edit %}
+    {# Четыре формы (по одной на линию) — будем заполнять поля прямо в ячейках через form="..." #}
+    {% for line_key in lines %}
+      <form id="form-{{ line_key }}" method="post" action="{% url 'line_stats:offtake' %}" class="d-none">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ prod_date|date:'Y-m-d' }}">
+        <input type="hidden" name="shift" value="{{ shift }}">
+        <input type="hidden" name="line" value="{{ line_key }}">
+        <input type="hidden" name="form-TOTAL_FORMS" value="{{ slots|length }}">
+        <input type="hidden" name="form-INITIAL_FORMS" value="0">
+        <input type="hidden" name="form-MIN_NUM_FORMS" value="0">
+        <input type="hidden" name="form-MAX_NUM_FORMS" value="1000">
+      </form>
+    {% endfor %}
+    <div class="alert alert-info py-2">
+      Можно редактировать причины для этой даты/смены до: <strong>{{ edit_deadline|date:"d.m.Y H:i" }}</strong>.
+    </div>
+  {% else %}
+    <div class="alert alert-secondary py-2">
+      Редактирование причин закрыто. Дедлайн был: <strong>{{ edit_deadline|date:"d.m.Y H:i" }}</strong>.
+    </div>
+  {% endif %}
+
+  {% if messages %}
+  <div class="messages-container">
+    {% for message in messages %}
+      {% with message.tags as tags %}
+        {% if tags == 'error' %}
+          {% with 'danger' as bs %}
+            <div class="alert alert-{{ bs }} alert-dismissible fade show shadow-sm mb-2" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endwith %}
+        {% elif tags == 'debug' %}
+          {% with 'secondary' as bs %}
+            <div class="alert alert-{{ bs }} alert-dismissible fade show shadow-sm mb-2" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endwith %}
+        {% else %}
+          {% with tags as bs %}
+            <div class="alert alert-{{ bs }} alert-dismissible fade show shadow-sm mb-2" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endwith %}
+        {% endif %}
+      {% endwith %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Unified table -->
+  <div class="card shadow-sm">
+    <div class="table-container">
+      <table id="offtake-table" class="table table-sm table-bordered align-middle mb-0" style="table-layout: fixed; width: 100%;">
+        <colgroup>
+          <!-- 1) Время -->
+          <col style="width:7%;">
+          <!-- 2) GWM (5 колонок) -->
+          <col style="width:2%;">   <!-- план -->
+          <col style="width:2%;">   <!-- факт -->
+          <col style="width:3%;">   <!-- простой -->
+          <col style="width:12%;">  <!-- причина -->
+          <col style="width:3%;">   <!-- автор -->
+          <!-- 3) FRAME (5 колонок) -->
+          <col style="width:2%;">   <!-- план -->
+          <col style="width:2%;">   <!-- факт -->
+          <col style="width:3%;">   <!-- простой -->
+          <col style="width:12%;">  <!-- причина -->
+          <col style="width:3%;">   <!-- автор -->
+          <!-- 4) CHERY (5 колонок) -->
+          <col style="width:2%;">   <!-- план -->
+          <col style="width:2%;">   <!-- факт -->
+          <col style="width:3%;">   <!-- простой -->
+          <col style="width:12%;">  <!-- причина -->
+          <col style="width:3%;">   <!-- автор -->
+          <!-- 5) CHANGAN (5 колонок) -->
+          <col style="width:2%;">   <!-- план -->
+          <col style="width:2%;">   <!-- факт -->
+          <col style="width:3%;">   <!-- простой -->
+          <col style="width:12%;">  <!-- причина -->
+          <col style="width:3%;">   <!-- автор -->
+          <!-- 6) PDI (3 колонки) -->
+          <col style="width:1.7%;"> <!-- вошло -->
+          <col style="width:1.7%;"> <!-- вышло -->
+          <col style="width:1.6%;"> <!-- в ремонте -->
+        </colgroup>
+        <thead class="table-light position-sticky top-0" style="z-index: 5;">
+          <tr>
+            <th rowspan="2" class="text-center align-middle sticky-col" style="min-width:120px;">Время</th>
+            <th colspan="5" class="text-center colhead col-gwm">GWM</th>
+            <th colspan="5" class="text-center">GWM FRAME LINE</th>
+            <th colspan="5" class="text-center colhead col-chery">CHERY</th>
+            <th colspan="5" class="text-center colhead col-changan">CHANGAN</th>
+            <th colspan="3" class="text-center colhead col-pdi">PDI</th>
+          </tr>
+          <tr>
+            <th class="text-center th-vert col-gwm">План</th>
+            <th class="text-center th-vert col-gwm">Факт</th>
+            <th class="text-center th-vert col-gwm">Простой (мин)</th>
+            <th class="text-center th-center col-gwm">Причина простоя</th>
+            <th class="text-center th-vert col-gwm">Автор</th>
+            <th class="text-center th-vert">План</th>
+            <th class="text-center th-vert">Факт</th>
+            <th class="text-center th-vert">Простой (мин)</th>
+            <th class="text-center th-center">Причина простоя</th>
+            <th class="text-center th-vert">Автор</th>
+            <th class="text-center th-vert col-chery">План</th>
+            <th class="text-center th-vert col-chery">Факт</th>
+            <th class="text-center th-vert col-chery">Простой (мин)</th>
+            <th class="text-center th-center col-chery">Причина простоя</th>
+            <th class="text-center th-vert col-chery">Автор</th>
+            <th class="text-center th-vert col-changan">План</th>
+            <th class="text-center th-vert col-changan">Факт</th>
+            <th class="text-center th-vert col-changan">Простой (мин)</th>
+            <th class="text-center th-center col-changan">Причина простоя</th>
+            <th class="text-center th-vert col-changan">Автор</th>
+            <th class="text-center th-vert col-pdi">Вошло</th>
+            <th class="text-center th-vert col-pdi">Вышло</th>
+            <th class="text-center th-vert col-pdi">В ремонте</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in compound_rows %}
+            {% with idx=forloop.counter0 %}
+            <tr class="{% if row.status == 'current' %}table-success{% endif %}">
+              <th scope="row" class="text-center fw-semibold sticky-col">
+                {% with s_from=row.slot|slice:":5" s_to=row.slot|slice:"6:11" %}
+                  {% with s_pair=s_from|add:"-"|add:s_to %}
+                    {{ row.slot }}
+                    {% if row.status == 'current' %}
+                      <span class="badge success text-dark badge-now">сейчас</span>
+                    {% endif %}
+                    {# Перекуры — показываем снизу как unified pill #}
+                    {% if s_pair == "09:30-09:40" or s_pair == "14:30-14:40" or s_pair == "18:30-18:40" or s_pair == "23:00-23:10" %}
+                      <div class="slot-note-row"><span class="slot-pill">перекур</span></div>
+                    {% endif %}
+                    {# Обеды — показываем снизу как unified pill #}
+                    {% if s_pair == "12:10-12:50" or s_pair == "20:20-21:00" %}
+                      <div class="slot-note-row"><span class="slot-pill">обед</span></div>
+                    {% endif %}
+                  {% endwith %}
+                {% endwith %}
+              </th>
+
+              {# GWM #}
+              <td class="text-center col-narrow col-gwm">{{ row.by_line_list.0.plan }}</td>
+              <td class="text-center fw-semibold col-narrow col-gwm">{{ row.by_line_list.0.actual }}</td>
+              <td class="text-center col-gwm">{{ row.by_line_list.0.down }}</td>
+              <td class="text-start reason-cell col-gwm">
+                {% if can_edit %}
+                  {% if row.status == 'past' %}
+                    <input type="hidden" form="form-gwm" name="form-{{ idx }}-start" value="{{ row.slot|slice:":5" }}">
+                    <input type="hidden" form="form-gwm" name="form-{{ idx }}-end" value="{{ row.slot|slice:"6:11" }}">
+                    <textarea form="form-gwm" name="form-{{ idx }}-downtime_reason" class="form-control form-control-sm reason-textarea" rows="1" maxlength="{{ max_reason_len|default:500 }}" data-autosize data-max="{{ max_reason_len|default:500 }}" placeholder="Причина простоя">{{ row.by_line_list.0.reason }}</textarea>
+                    <small class="reason-hint"><span class="reason-counter">0</span>/{{ max_reason_len|default:500 }}</small>
+                  {% else %}
+                    <span class="text-muted small"><i class="bi bi-lock"></i> Доступ после закрытия слота</span>
+                  {% endif %}
+                {% else %}
+                  {{ row.by_line_list.0.reason }}
+                {% endif %}
+              </td>
+              <td class="text-center col-gwm"><span class="text-muted small">{{ row.by_line_list.0.author }}</span></td>
+
+              {# FRAME #}
+              <td class="text-center col-narrow">{{ row.by_line_list.1.plan }}</td>
+              <td class="text-center fw-semibold col-narrow">{{ row.by_line_list.1.actual }}</td>
+              <td class="text-center">{{ row.by_line_list.1.down }}</td>
+              <td class="text-start reason-cell">
+                {% if can_edit %}
+                  {% if row.status == 'past' %}
+                    <input type="hidden" form="form-frame" name="form-{{ idx }}-start" value="{{ row.slot|slice:":5" }}">
+                    <input type="hidden" form="form-frame" name="form-{{ idx }}-end" value="{{ row.slot|slice:"6:11" }}">
+                    <textarea form="form-frame" name="form-{{ idx }}-downtime_reason" class="form-control form-control-sm reason-textarea" rows="1" maxlength="{{ max_reason_len|default:500 }}" data-autosize data-max="{{ max_reason_len|default:500 }}" placeholder="Причина простоя">{{ row.by_line_list.1.reason }}</textarea>
+                    <small class="reason-hint"><span class="reason-counter">0</span>/{{ max_reason_len|default:500 }}</small>
+                  {% else %}
+                    <span class="text-muted small"><i class="bi bi-lock"></i> Доступ после закрытия слота</span>
+                  {% endif %}
+                {% else %}
+                  {{ row.by_line_list.1.reason }}
+                {% endif %}
+              </td>
+              <td class="text-center"><span class="text-muted small">{{ row.by_line_list.1.author }}</span></td>
+
+              {# CHERY #}
+              <td class="text-center col-narrow col-chery">{{ row.by_line_list.2.plan }}</td>
+              <td class="text-center fw-semibold col-narrow col-chery">{{ row.by_line_list.2.actual }}</td>
+              <td class="text-center col-chery">{{ row.by_line_list.2.down }}</td>
+              <td class="text-start reason-cell col-chery">
+                {% if can_edit %}
+                  {% if row.status == 'past' %}
+                    <input type="hidden" form="form-chery" name="form-{{ idx }}-start" value="{{ row.slot|slice:":5" }}">
+                    <input type="hidden" form="form-chery" name="form-{{ idx }}-end" value="{{ row.slot|slice:"6:11" }}">
+                    <textarea form="form-chery" name="form-{{ idx }}-downtime_reason" class="form-control form-control-sm reason-textarea" rows="1" maxlength="{{ max_reason_len|default:500 }}" data-autosize data-max="{{ max_reason_len|default:500 }}" placeholder="Причина простоя">{{ row.by_line_list.2.reason }}</textarea>
+                    <small class="reason-hint"><span class="reason-counter">0</span>/{{ max_reason_len|default:500 }}</small>
+                  {% else %}
+                    <span class="text-muted small"><i class="bi bi-lock"></i> Доступ после закрытия слота</span>
+                  {% endif %}
+                {% else %}
+                  {{ row.by_line_list.2.reason }}
+                {% endif %}
+              </td>
+              <td class="text-center col-chery"><span class="text-muted small">{{ row.by_line_list.2.author }}</span></td>
+
+              {# CHANGAN #}
+              <td class="text-center col-narrow col-changan">{{ row.by_line_list.3.plan }}</td>
+              <td class="text-center fw-semibold col-narrow col-changan">{{ row.by_line_list.3.actual }}</td>
+              <td class="text-center col-changan">{{ row.by_line_list.3.down }}</td>
+              <td class="text-start reason-cell col-changan">
+                {% if can_edit %}
+                  {% if row.status == 'past' %}
+                    <input type="hidden" form="form-changan" name="form-{{ idx }}-start" value="{{ row.slot|slice:":5" }}">
+                    <input type="hidden" form="form-changan" name="form-{{ idx }}-end" value="{{ row.slot|slice:"6:11" }}">
+                    <textarea form="form-changan" name="form-{{ idx }}-downtime_reason" class="form-control form-control-sm reason-textarea" rows="1" maxlength="{{ max_reason_len|default:500 }}" data-autosize data-max="{{ max_reason_len|default:500 }}" placeholder="Причина простоя">{{ row.by_line_list.3.reason }}</textarea>
+                    <small class="reason-hint"><span class="reason-counter">0</span>/{{ max_reason_len|default:500 }}</small>
+                  {% else %}
+                    <span class="text-muted small"><i class="bi bi-lock"></i> Доступ после закрытия слота</span>
+                  {% endif %}
+                {% else %}
+                  {{ row.by_line_list.3.reason }}
+                {% endif %}
+              </td>
+              <td class="text-center col-changan"><span class="text-muted small">{{ row.by_line_list.3.author }}</span></td>
+
+              {# PDI #}
+              <td class="text-center col-pdi">{{ row.pdi.in }}</td>
+              <td class="text-center col-pdi">{{ row.pdi.out }}</td>
+              <td class="text-center col-pdi">{{ row.pdi.wip }}</td>
+            </tr>
+            {% endwith %}
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          <tr>
+            <th class="sticky-col">ИТОГО</th>
+              {% with t=totals_list.0 %}
+                <th class="text-center col-narrow col-gwm">{{ t.plan }}</th>
+                <th class="text-center col-narrow col-gwm">{{ t.actual }}</th>
+                <th class="text-center col-gwm">{{ t.down }}</th>
+                <th class="col-gwm"></th>
+                <th class="col-gwm"></th>
+              {% endwith %}
+              {% with t=totals_list.1 %}
+                <th class="text-center col-narrow">{{ t.plan }}</th>
+                <th class="text-center col-narrow">{{ t.actual }}</th>
+                <th class="text-center">{{ t.down }}</th>
+                <th></th>
+                <th></th>
+              {% endwith %}
+              {% with t=totals_list.2 %}
+                <th class="text-center col-narrow col-chery">{{ t.plan }}</th>
+                <th class="text-center col-narrow col-chery">{{ t.actual }}</th>
+                <th class="text-center col-chery">{{ t.down }}</th>
+                <th class="col-chery"></th>
+                <th class="col-chery"></th>
+              {% endwith %}
+              {% with t=totals_list.3 %}
+                <th class="text-center col-narrow col-changan">{{ t.plan }}</th>
+                <th class="text-center col-narrow col-changan">{{ t.actual }}</th>
+                <th class="text-center col-changan">{{ t.down }}</th>
+                <th class="col-changan"></th>
+                <th class="col-changan"></th>
+              {% endwith %}
+            <th class="text-center col-pdi">{{ pdi.totals.in }}</th>
+            <th class="text-center col-pdi">{{ pdi.totals.out }}</th>
+            <th class="text-center col-pdi">{{ pdi.totals.wip }}</th>
+          </tr>
+          {% if can_edit %}
+          <tr>
+            <th class="sticky-col"></th>
+            {# GWM group (5 cols): plan, actual, down, reason, author #}
+            <th></th>
+            <th></th>
+            <th></th>
+            <th class="text-center col-gwm">
+              <button type="submit" form="form-gwm" class="btn btn-sm w-100 btn-cell btn-save-gwm">Сохранить GWM</button>
+            </th>
+            <th></th>
+            {# FRAME group (5 cols) #}
+            <th></th>
+            <th></th>
+            <th></th>
+            <th class="text-center">
+              <button type="submit" form="form-frame" class="btn btn-sm w-100 btn-cell btn-save-frame">Сохранить FRAME</button>
+            </th>
+            <th></th>
+            {# CHERY group (5 cols) #}
+            <th></th>
+            <th></th>
+            <th></th>
+            <th class="text-center col-chery">
+              <button type="submit" form="form-chery" class="btn btn-sm w-100 btn-cell btn-save-chery">Сохранить CHERY</button>
+            </th>
+            <th></th>
+            {# CHANGAN group (5 cols) #}
+            <th></th>
+            <th></th>
+            <th></th>
+            <th class="text-center col-changan">
+              <button type="submit" form="form-changan" class="btn btn-sm w-100 btn-cell btn-save-changan">Сохранить CHANGAN</button>
+            </th>
+            <th></th>
+            {# PDI (3 cols) – no save buttons #}
+            <th></th>
+            <th></th>
+            <th></th>
+          </tr>
+          {% endif %}
+        </tfoot>
+      </table>
+    </div> <!-- /.table-container -->
+  </div>
+</div>
+
+  <script>
+    (function(){
+      function autosize(el){
+        el.style.height = 'auto';
+        el.style.overflowY = 'hidden';
+        el.style.height = (el.scrollHeight) + 'px';
+      }
+      document.querySelectorAll('textarea[data-autosize]').forEach(function(el){
+        const counter = el.parentElement.querySelector('.reason-counter');
+        function update(){
+          autosize(el);
+          if (counter){ counter.textContent = String(el.value.length); }
+        }
+        el.addEventListener('input', update);
+        // init
+        update();
+      });
+    })();
+  </script>
+  <script>
+    (function(){
+      document.querySelectorAll('.messages-container .alert').forEach(function(el){
+        setTimeout(function(){
+          try{ window.bootstrap && bootstrap.Alert.getOrCreateInstance(el).close(); }
+          catch(e){ el.classList.remove('show'); el.remove(); }
+        }, 3500);
+      });
+    })();
+  </script>
+  <script>
+    (function(){
+      const KEY_WIN = 'offtake_scroll_win';
+      const KEY_TBL = 'offtake_scroll_tbl';
+
+      // Use manual restoration to avoid conflict with browser's own behavior
+      if ('scrollRestoration' in history){
+        try { history.scrollRestoration = 'manual'; } catch(e) { /* ignore */ }
+      }
+
+      function getTableContainer(){
+        return document.querySelector('.table-container');
+      }
+
+      function saveScroll(){
+        try {
+          const win = { x: window.scrollX || 0, y: window.scrollY || 0, url: location.pathname + location.search };
+          sessionStorage.setItem(KEY_WIN, JSON.stringify(win));
+          const tc = getTableContainer();
+          if (tc){
+            const tbl = { left: tc.scrollLeft || 0, top: tc.scrollTop || 0, url: location.pathname + location.search };
+            sessionStorage.setItem(KEY_TBL, JSON.stringify(tbl));
+          }
+        } catch(e) { /* noop */ }
+      }
+
+      function restoreScroll(){
+        try {
+          const winRaw = sessionStorage.getItem(KEY_WIN);
+          const tblRaw = sessionStorage.getItem(KEY_TBL);
+          const here = location.pathname + location.search;
+          if (winRaw){
+            const win = JSON.parse(winRaw);
+            if (!win.url || win.url === here){
+              window.scrollTo(win.x || 0, win.y || 0);
+            }
+            sessionStorage.removeItem(KEY_WIN);
+          }
+          if (tblRaw){
+            const tbl = JSON.parse(tblRaw);
+            const tc = getTableContainer();
+            if (tc && (!tbl.url || tbl.url === here)){
+              // restore after layout paints
+              requestAnimationFrame(() => { tc.scrollTo(tbl.left || 0, tbl.top || 0); });
+            }
+            sessionStorage.removeItem(KEY_TBL);
+          }
+        } catch(e) { /* noop */ }
+      }
+
+      // Restore on load
+      restoreScroll();
+
+      // Save on any form submit (filters or hidden per-line forms)
+      document.addEventListener('submit', function(ev){ saveScroll(); }, true);
+
+      // Also save on click of explicit save buttons (in case some browsers navigate before submit event bubbles)
+      document.querySelectorAll('button[form], button[type="submit"]').forEach(btn => {
+        btn.addEventListener('click', saveScroll, { capture: true });
+      });
+
+      // Save on page refresh / navigation away
+      window.addEventListener('beforeunload', saveScroll, { capture: true });
+      document.addEventListener('visibilitychange', function(){
+        if (document.visibilityState === 'hidden') { saveScroll(); }
+      });
+
+      // Also restore on browser back/forward navigation events
+      window.addEventListener('pageshow', function(){ restoreScroll(); });
+    })();
+  </script>
+{% endblock %}

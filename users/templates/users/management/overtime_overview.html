@@ -1,0 +1,178 @@
+{% extends "users/base.html" %}
+{% block title %}История переработок{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <div class="mb-3">
+        <a href="{% url 'office_overview' %}" class="btn btn-secondary">
+            ← Назад
+        </a>
+    </div>
+
+    <h2 class="mb-4">История сверхурочных сотрудников</h2>
+
+    <form method="get" class="mb-4">
+        <label for="manager" class="form-label">Фильтр по менеджеру:</label>
+        <select name="manager" id="manager" class="form-select" onchange="this.form.submit()">
+            <option value="">Все</option>
+            {% for stat in manager_stats %}
+                <option value="{{ stat.id }}" {% if current_manager == stat.id %}selected{% endif %}>
+                    {{ stat.manager.get_full_name }} ({{ stat.count }} сотрудников)
+                </option>
+            {% endfor %}
+        </select>
+    </form>
+
+    <ul class="nav nav-tabs mb-3" id="overtimeTabs">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#without_day_off">Без выходного</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#with_day_off">С выходным</a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- 🔴 Без выходного -->
+        <div class="tab-pane fade show active" id="without_day_off">
+            <a href="{% url 'export_pending_day_off' %}" class="btn btn-success mb-3">
+                📥 Выгрузить без выходных
+            </a>
+            {% if without_day_off %}
+                {% for emp_id, data in without_day_off.items %}
+                    <div class="card mb-4 shadow-sm">
+                        <div class="card-body">
+                            <div class="position-absolute top-0 end-0 p-3">
+                                <div style="background-color: #dc3545; color: white; font-size: 1.1rem; padding: 4px 12px; border-radius: 0.6rem; font-weight: bold;">
+                                    Долг: {{ data.pending_day_off_count }}
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-start flex-wrap">
+                                <div>
+                                    <h5 class="card-title mb-1">{{ data.employee.name }}</h5>
+                                    <small class="text-muted">({{ data.employee.position }}, {{ data.employee.department }})</small>
+                                    <p><strong>Добавил:</strong> {{ data.manager }}</p>
+                                </div>
+
+                                <div class="ms-auto">
+                                    <div style="background-color: {{ data.badge_color }}; color: white; font-size: 1.1rem; padding: 4px 12px; border-radius: 0.6rem; font-weight: bold; white-space: nowrap;">
+                                        {{ data.badge_text }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive mt-3">
+                                <table class="table table-bordered table-sm align-middle text-center">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Дата</th>
+                                            <th>Время</th>
+                                            <th>Часы</th>
+                                            <th>ХТК</th>
+                                            <th>Обоснование</th>
+                                            <th style="width: 180px;">Выходной</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for r in data.records %}
+                                            <tr>
+                                                <td>{{ r.date|date:"d.m.Y" }}</td>
+                                                <td>{{ r.start_time|time:"H:i" }} – {{ r.end_time|time:"H:i" }}</td>
+                                                <td>{{ r.hours }}</td>
+                                                <td>{% if r.is_xtk %}✅{% else %}—{% endif %}</td>
+                                                <td class="text-start">{{ r.justification }}</td>
+                                                <td class="text-center">
+                                                    <form method="post" action="{% url 'assign_day_off' %}" onsubmit="return confirm('Подтвердите назначение выходного')">
+                                                        {% csrf_token %}
+                                                        <input type="hidden" name="record_id" value="{{ r.id }}">
+                                                        <input type="date" name="day_off" required class="form-control form-control-sm mb-1" style="width: 160px;">
+                                                        <button type="submit" class="btn btn-sm btn-outline-success w-100">Назначить</button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>Нет данных.</p>
+            {% endif %}
+        </div>
+
+        <!-- 🟢 С выходным -->
+        <div class="tab-pane fade" id="with_day_off">
+            {% if with_day_off %}
+                {% for emp_id, data in with_day_off.items %}
+                    <div class="card mb-4 shadow-sm border-success">
+                        <div class="card-body">
+                            <div class="position-absolute top-0 end-0 p-3">
+                                <div style="background-color: #198754; color: white; font-size: 1.1rem; padding: 4px 12px; border-radius: 0.6rem; font-weight: bold;">
+                                    Получено: {{ data.day_off_count }}
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-start flex-wrap">
+                                <div>
+                                    <h5 class="card-title mb-1">{{ data.employee.name }}</h5>
+                                    <small class="text-muted">({{ data.employee.position }}, {{ data.employee.department }})</small>
+                                    <p><strong>Добавил:</strong> {{ data.manager }}</p>
+                                </div>
+
+                                <div class="ms-auto">
+                                    <div style="background-color: {{ data.badge_color }}; color: white; font-size: 1.1rem; padding: 4px 12px; border-radius: 0.6rem; font-weight: bold; white-space: nowrap;">
+                                        {{ data.badge_text }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive mt-3">
+                                <table class="table table-bordered table-sm align-middle text-center">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Дата</th>
+                                            <th>Время</th>
+                                            <th>Часы</th>
+                                            <th>ХТК</th>
+                                            <th>Обоснование</th>
+                                            <th style="width: 180px;">Выходной</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for r in data.records %}
+                                            <tr>
+                                                <td>{{ r.date|date:"d.m.Y" }}</td>
+                                                <td>{{ r.start_time|time:"H:i" }} – {{ r.end_time|time:"H:i" }}</td>
+                                                <td>{{ r.hours }}</td>
+                                                <td>{% if r.is_xtk %}✅{% else %}—{% endif %}</td>
+                                                <td class="text-start">{{ r.justification }}</td>
+                                                <td class="text-center">
+                                                    <form method="post" action="{% url 'update_day_off' %}" class="d-flex gap-2 align-items-start" onsubmit="return confirm('Подтвердите изменение или удаление даты выходного')">
+                                                        {% csrf_token %}
+                                                        <input type="hidden" name="record_id" value="{{ r.id }}">
+                                                        <input type="date" name="new_day_off" value="{{ r.compensated_day|date:'Y-m-d' }}" required class="form-control form-control-sm" style="width: 140px;">
+                                                        <div class="d-flex flex-column gap-1">
+                                                            <button type="submit" class="btn btn-sm btn-outline-primary">Изменить</button>
+                                                            <button name="delete_day_off" value="true" type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Удалить выходной?')">Удалить</button>
+                                                        </div>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>Нет данных.</p>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,186 @@
+{% extends "users/base.html" %}
+{% block title %}Личный кабинет{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <a href="{{ request.META.HTTP_REFERER|default:'/' }}" class="btn btn-light mb-3">
+        ← Назад
+    </a>
+
+    <div class="card shadow-sm p-4">
+        <div class="d-flex align-items-center mb-4">
+            <div class="position-relative" style="width: 120px; height: 120px;">
+                {% if user.avatar %}
+                    <a href="{% url 'view_image' image_path=user.avatar.url|cut:'/media/' %}?index=0&group=avatar&photos=%5B%22{{ user.avatar.url }}%22%5D">
+                        <img src="{{ user.avatar.url }}" alt="avatar" class="shadow rounded"
+                             style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;">
+                    </a>
+                {% else %}
+                    <div class="bg-light rounded-circle shadow d-flex align-items-center justify-content-center text-muted"
+                         style="width: 100%; height: 100%;">
+                        Нет авы
+                    </div>
+                {% endif %}
+                <label for="avatar-upload"
+                       class="position-absolute bottom-0 end-0 bg-white shadow d-flex align-items-center justify-content-center"
+                       style="width: 32px; height: 32px; border-radius: 50%; cursor: pointer;">
+                    <i class="bi bi-pencil"></i>
+                </label>
+                <input id="avatar-upload" name="avatar" type="file" class="d-none" form="profile-form" onchange="document.getElementById('profile-form').submit();">
+            </div>
+            <div class="ms-3">
+                <h4 class="mb-0">{{ user.username }}</h4>
+                <p class="text-muted mb-0">{{ user.email }}</p>
+                    <p class="mt-1">
+                    <span class="badge bg-secondary">
+                        {{ user.position }}
+                    </span>
+                </p>
+            </div>
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+        {% if form.errors %}
+            <div class="alert alert-danger">{{ form.errors }}</div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data" id="profile-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_profile">
+            <div class="row">
+                <!-- Фамилия -->
+                <div class="col-md-4 mb-3">
+                    {{ form.last_name.label_tag }}
+                    {{ form.last_name }}
+                </div>
+
+                <!-- Имя -->
+                <div class="col-md-4 mb-3">
+                    {{ form.first_name.label_tag }}
+                    {{ form.first_name }}
+                </div>
+
+                <!-- Отчество -->
+                <div class="col-md-4 mb-3">
+                    {{ form.patronymic.label_tag }}
+                    {{ form.patronymic }}
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Должность: под фамилией и именем (8 колонок) -->
+                <div class="col-md-8 mb-3">
+                    {{ form.position.label_tag }}
+                    {{ form.position }}
+                </div>
+
+                <!-- Почта: под отчеством (4 колонки) -->
+                <div class="col-md-4 mb-3">
+                    {{ form.email.label_tag }}
+                    {{ form.email }}
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" class="btn btn-success btn-lg mt-2">
+                    Сохранить изменения
+                </button>
+            </div>
+        </form>
+
+        <hr>
+
+        <h5 class="mt-3">Смена пароля</h5>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="change_password">
+
+            {% if password_form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {% for error in password_form.non_field_errors %}
+                        {{ error }}<br>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Старый пароль</label>
+                    <div class="input-group">
+                        {{ password_form.old_password }}
+                        <span class="input-group-text" style="cursor: pointer;" onclick="togglePassword('old_password', this)">
+                            <i class="bi bi-eye-slash"></i>
+                        </span>
+                    </div>
+                    {% if password_form.old_password.errors %}
+                        <div class="text-danger small">
+                            {% for error in password_form.old_password.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Новый пароль</label>
+                    <div class="input-group">
+                        {{ password_form.new_password1 }}
+                        <span class="input-group-text" style="cursor: pointer;" onclick="togglePassword('new_password1', this)">
+                            <i class="bi bi-eye-slash"></i>
+                        </span>
+                    </div>
+                    {% if password_form.new_password1.errors %}
+                        <div class="text-danger small">
+                            {% for error in password_form.new_password1.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Подтверждение нового пароля</label>
+                    <div class="input-group">
+                        {{ password_form.new_password2 }}
+                        <span class="input-group-text" style="cursor: pointer;" onclick="togglePassword('new_password2', this)">
+                            <i class="bi bi-eye-slash"></i>
+                        </span>
+                    </div>
+                    {% if password_form.new_password2.errors %}
+                        <div class="text-danger small">
+                            {% for error in password_form.new_password2.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" class="btn btn-danger btn-lg mt-2">Изменить пароль</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function togglePassword(fieldId, btn) {
+    const field = document.getElementById(fieldId);
+    const icon = btn.querySelector('i');
+    if (field.type === "password") {
+        field.type = "text";
+        icon.classList.remove("bi-eye-slash");
+        icon.classList.add("bi-eye");
+    } else {
+        field.type = "password";
+        icon.classList.remove("bi-eye");
+        icon.classList.add("bi-eye-slash");
+    }
+}
+</script>
+{% endblock %}

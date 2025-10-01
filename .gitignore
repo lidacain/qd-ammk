@@ -1,0 +1,39 @@
+﻿__pycache__/
+*.py[cod]
+*.log
+*.sqlite3
+
+# venv
+.venv/
+venv/
+env/
+
+# build / node
+node_modules/
+
+# генерируемое и тяжёлое
+media/
+staticfiles/
+
+# секреты/ключи/креды
+.env
+*.env
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.jks
+*credentials*.json
+*.json
+
+# офисные тяжёлые файлы (на всякий)
+*.xlsx
+*.xlsm
+*.zip
+*.rar
+*.7z
+*.pptx
+*.mp4

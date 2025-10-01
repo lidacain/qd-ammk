@@ -1,0 +1,182 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block title %}Отчёт — Зона основной приёмки DKD{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+    <!-- Назад -->
+    <a href="{% url 'incoming_workshop_dashboard' %}" class="btn btn-outline-secondary mb-4">← Назад</a>
+    <h3 class="mb-4 text-center">Отчёт — Зона основной приёмки DKD</h3>
+
+    <div class="row">
+
+        <!-- Левая колонка: ТОП 20 дефектов -->
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-center mb-3">Топ 20 дефектов</h5>
+                    <table class="table table-striped">
+                        <tbody>
+                            {% for defect, count in top_defects %}
+                                {% with defect|split:"—" as parts %}
+                                    <tr>
+                                        <td>
+                                            <div><strong>Деталь:</strong> {{ parts.0|default:"—"|strip }}</div>
+                                            <div><strong>Дефект:</strong> {{ parts.1|default:"—"|strip }}</div>
+                                        </td>
+                                        <td class="text-end align-middle">{{ count }}</td>
+                                    </tr>
+                                {% endwith %}
+                            {% empty %}
+                                <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Центральная колонка: Фильтры + метрики -->
+        <div class="col-md-4 mb-4">
+
+            <!-- 🔘 Фильтры -->
+            <form method="get" class="mb-4 text-center">
+                <div class="d-flex flex-column align-items-center gap-3">
+
+                    <!-- Произвольный диапазон -->
+                    <div class="w-100 text-start">
+                        <label class="form-label">Произвольный период:</label>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control">
+                            <span>—</span>
+                            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control">
+                        </div>
+                        <div class="form-text">Если заданы даты, они имеют приоритет над выбором периода</div>
+                    </div>
+
+                    <!-- ✅ Фильтры по маркам и грейдам -->
+                    <div class="w-100 text-start">
+                        <label class="form-label">Фильтры:</label>
+                        <div class="row">
+                            <!-- Левая колонка: Марки -->
+                            <div class="col-6">
+                                <strong>Марки:</strong>
+                                <div class="row row-cols-2">
+                                    {% for brand in all_brands %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="brand" value="{{ brand }}" id="brand_{{ forloop.counter }}" {% if brand in selected_brands %}checked{% endif %} onchange="this.form.submit()">
+                                        <label class="form-check-label" for="brand_{{ forloop.counter }}">
+                                            {{ brand }}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+                            <!-- Правая колонка: Грейды -->
+                            <div class="col-6">
+                                <strong>Грейды:</strong>
+                                <div class="row row-cols-2">
+                                    {% for grade in all_grades %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="grade" value="{{ grade }}" id="grade_{{ forloop.counter }}" {% if grade in selected_grades %}checked{% endif %} onchange="this.form.submit()">
+                                        <label class="form-check-label" for="grade_{{ forloop.counter }}">
+                                            {{ grade }}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary mt-2">Применить фильтры</button>
+                </div>
+            </form>
+
+            <!-- 📦 Карточки метрик -->
+            <div class="d-grid gap-3">
+                <div class="card shadow-sm border-secondary text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Всего осмотров</h6>
+                        <p class="fs-4 text-secondary">{{ total_inspections }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-warning text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Кузова с дефектами</h6>
+                        <p class="fs-4">{{ inspections_with_defects }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-danger text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Всего дефектов</h6>
+                        <p class="fs-4 text-danger">{{ total_defects }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-primary text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">DPU</h6>
+                        <p class="fs-4">{{ dpu }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-success text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">STR (%)</h6>
+                        <p class="fs-4">{{ str_percentage }}%</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Правая колонка: ТОП 20 контроллеров -->
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-center mb-3">Топ 20 контроллеров</h5>
+                    <table class="table table-striped">
+                        <tbody>
+                            {% for controller, count in top_controllers %}
+                            <tr>
+                                <td>{{ controller }}</td>
+                                <td class="text-end">{{ count }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const startDateInput = document.getElementById("start_date");
+    const endDateInput = document.getElementById("end_date");
+
+    startDateInput.addEventListener("change", function () {
+        if (startDateInput.value) {
+            endDateInput.min = startDateInput.value;
+        } else {
+            endDateInput.removeAttribute("min");
+        }
+    });
+
+    endDateInput.addEventListener("change", function () {
+        if (endDateInput.value) {
+            startDateInput.max = endDateInput.value;
+        } else {
+            startDateInput.removeAttribute("max");
+        }
+    });
+
+    if (startDateInput.value) endDateInput.min = startDateInput.value;
+    if (endDateInput.value) startDateInput.max = endDateInput.value;
+});
+</script>
+{% endblock %}

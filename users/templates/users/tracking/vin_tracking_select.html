@@ -1,0 +1,67 @@
+{% extends "users/base.html" %}
+{% block title %}Выбор VIN{% endblock %}
+
+{% block content %}
+
+<style>
+    .section-header {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #111;
+        text-transform: uppercase;
+        background-color: rgba(255, 255, 255, 0.85);
+        padding: 14px 20px;
+        border-radius: 12px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        backdrop-filter: blur(4px);
+
+        /* ✨ ВАЖНО: добавим отступы сверху и снизу */
+        margin-top: 3rem;
+        margin-bottom: 2rem;
+    }
+</style>
+
+<div class="container mt-4">
+    <div class="mb-3">
+        <a href="{% url 'master_dashboard' %}" class="btn btn-light">
+            ← Назад
+        </a>
+    </div>
+
+    <h3 class="section-header">Выберите VIN для отслеживания</h3>
+
+    <form method="get" action="">
+        <select id="vinSelector" class="form-select form-select-lg mb-4 w-50 mx-auto">
+            <option value="">-- Выберите VIN --</option>
+            {% for vin in vins %}
+                <option value="{{ vin }}">{{ vin }}</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#vinSelector').select2({
+            theme: 'bootstrap-5',
+            placeholder: "-- Выберите VIN --",
+            allowClear: true,
+            width: '100%',
+            language: {
+                noResults: function () {
+                    return "VIN не найден";
+                }
+            }
+        });
+
+        $('#vinSelector').on('change', function () {
+            const vin = $(this).val();
+            if (vin) {
+                window.location.href = "/users/vin-tracking/" + vin + "/";
+            }
+        });
+    });
+</script>
+{% endblock %}

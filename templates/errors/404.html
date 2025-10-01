@@ -1,0 +1,16 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Страница не найдена{% endblock %}
+
+{% block content %}
+<div class="container mt-5 text-center">
+    <div class="alert alert-warning shadow-sm py-5">
+        <h1 class="display-4 mb-3">😕 Упс! Страница не найдена</h1>
+        <p class="lead">Возможно, страница была удалена, перемещена или её никогда не существовало.</p>
+        <a href="{% url 'master_dashboard' %}" class="btn btn-primary mt-4">
+            ⬅️ Вернуться на главную
+        </a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,540 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% block title %}QRQC — Дашборд{% endblock %}
+
+{% block content %}
+<style>
+  :root{
+    --bg: #f6f8fb;
+    --card-bg:#ffffff;
+    --text:#111827;      /* серо-чёрный */
+    --muted:#6b7280;     /* подписи */
+    --accent:#3b82f6;    /* столбцы */
+    --dpu:#f97316;       /* линия DPU (зелёная) */
+    --str:#16a34a;       /* линия STR (янтарная) */
+    --grid:#e5e7eb;
+    --shadow: 0 10px 25px rgba(16,24,40,.08);
+  }
+  .qrqc-wrap{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+    margin: 18px auto 36px;
+    max-width: 1400px;
+  }
+  /*.qrqc-brand h2{
+    text-align:center;
+    color:var(--text);
+    margin: 6px 0 14px;
+    font-weight: 700;
+    letter-spacing:.3px;
+  }*/
+  .qrqc-card{
+    background:var(--card-bg);
+    border-radius:18px;
+    padding:14px 14px 6px;
+    box-shadow:var(--shadow);
+    border:1px solid #f1f5f9;
+    min-height: 300px;
+  }
+  .qrqc-controls{
+    display:grid;
+    grid-template-columns: 1fr auto 1fr; /* left spacer | centered buttons | right corner */
+    align-items:center;
+    gap:14px;
+    margin: 8px 0 14px;
+  }
+  .qrqc-controls-center{ display:flex; gap:14px; justify-self:center; }
+  .qrqc-controls-right{ justify-self:end; }
+  .qrqc-pillbar{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin:10px 0;
+  }
+  .qrqc-brandbar{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+    max-width: 1400px;
+    margin: 10px auto 22px;
+  }
+  .qrqc-brandbar .brand-cell{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  /* clickable brand pills */
+  .qrqc-brandbar .qrqc-pill{
+    text-decoration: none;          /* 1. no underline */
+    cursor: pointer;                /* 2. pointer cursor */
+    transition: transform .08s ease, box-shadow .2s; /* 3. smooth lift */
+  }
+  .qrqc-brandbar .qrqc-pill:hover{
+    transform: translateY(-3px);    /* slight lift */
+    box-shadow: 0 12px 28px rgba(16,24,40,.12); /* emphasize hover */
+    text-decoration: none;          /* ensure no underline on hover */
+  }
+  .qrqc-pill,
+  .qrqc-btn{
+    background:var(--card-bg);
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    padding:12px 18px;
+    min-width: 180px;           /* немного шире, но не full width */
+    height: 52px;               /* увеличенная высота */
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:800;
+    font-size:20px;             /* увеличенный размер шрифта */
+    color:var(--text);
+    box-shadow:var(--shadow);
+  }
+  .qrqc-btn{ cursor:pointer; transition:transform .05s ease-in-out, box-shadow .2s; }
+  .qrqc-btn:hover{ transform: translateY(-1px); }
+  .qrqc-btn.active { outline: 2px solid rgba(59,130,246,.6); box-shadow: 0 0 0 4px rgba(59,130,246,.08); }
+  .qrqc-pill{ cursor:default; }
+  /* Группа недельных графиков (рамка вокруг кнопок + карточек) */
+  .qrqc-weekly-group{
+    border:1px solid #e5e7eb;
+    border-radius:18px;
+    padding:14px 14px 6px;
+    background: #fff;
+    box-shadow: var(--shadow);
+    margin-bottom: 22px;
+  }
+  .qrqc-weekly-grid{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+  }
+  .qrqc-weekly-group .apexcharts-xaxis text,
+  .qrqc-weekly-group .apexcharts-xaxis .apexcharts-text {
+    cursor: pointer !important;
+  }
+  .muted-bar{ color:var(--muted); font-size:14px; margin-bottom: 6px; }
+  .qrqc-chart{ height: 240px; }
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+  .switch-view{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #e5e7eb;border-radius:10px;padding:6px 10px;font-size:12px;background:#fff;cursor:pointer;width:92px;min-height:32px;white-space:nowrap}
+  .switch-view.active{outline:2px solid rgba(59,130,246,.5)}
+  .hidden{display:none}
+  table.qrtable{width:100%;border-collapse:collapse;font-size:13px}
+  .qrtable th,.qrtable td{border:1px solid #e5e7eb;padding:8px 10px;vertical-align:top}
+  .qrtable th{background:#f8fafc;color:#334155;font-weight:700}
+  .qrtable td.num, .qrtable th.num{text-align:center;width:56px}
+  .qrtable td.count{font-weight:700;text-align:center;width:70px}
+  @media (max-width:1200px){ .qrqc-wrap{ grid-template-columns:1fr; } }
+</style>
+<!-- WEEKLY (top row) -->
+<div class="qrqc-weekly-group">
+  <div class="qrqc-controls">
+    <div></div> <!-- left spacer -->
+    <div class="qrqc-controls-center">
+      <button type="button" class="qrqc-btn" id="btnModeSum">Суммарно</button>
+      <button type="button" class="qrqc-btn" id="btnModeAvg">Среднее</button>
+    </div>
+    <div class="qrqc-controls-right">
+      <button type="button" class="qrqc-btn" id="btnToday">Текущая неделя</button>
+    </div>
+  </div>
+  <div class="qrqc-weekly-grid">
+    {% for brand, data in charts.items %}
+      <section class="qrqc-brand">
+        <div class="qrqc-card">
+          <div class="card-head">
+            <h3 style="margin:0;color:var(--muted);font-weight:700;font-size:14px">{% if brand == 'gwm' %}GWM{% else %}{{ brand|capfirst }}{% endif %} — по неделям</h3>
+            <button id="toggle_{{ brand }}_prev5" class="switch-view" data-target="{{ brand }}_prev5">Таблица</button>
+          </div>
+          <div id="{{ brand }}_prev5" class="qrqc-chart"></div>
+          <div id="{{ brand }}_prev5_table_wrap" class="hidden">
+            <table id="{{ brand }}_prev5_table" class="qrtable"></table>
+          </div>
+        </div>
+      </section>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="qrqc-brandbar">
+  {% for brand, data in charts.items %}
+    <div class="brand-cell">
+      <a href="{% url 'qrqc_dashboard_brand' brand %}" class="qrqc-pill" data-brand="{{ brand }}">
+        {% if brand == 'gwm' %}GWM{% else %}{{ brand|capfirst }}{% endif %}
+      </a>
+    </div>
+  {% endfor %}
+</div>
+
+<!-- DAILY (bottom row) -->
+<div class="qrqc-wrap">
+  {% for brand, data in charts.items %}
+    <section class="qrqc-brand">
+      <div class="qrqc-card">
+        <div class="card-head">
+          <h3 style="margin:0;color:var(--muted);font-weight:700;font-size:14px">{% if brand == 'gwm' %}GWM{% else %}{{ brand|capfirst }}{% endif %} — по дням</h3>
+          <button id="toggle_{{ brand }}_current" class="switch-view" data-target="{{ brand }}_current">Таблица</button>
+        </div>
+        <div id="{{ brand }}_current" class="qrqc-chart"></div>
+        <div id="{{ brand }}_current_table_wrap" class="hidden">
+          <table id="{{ brand }}_current_table" class="qrtable"></table>
+        </div>
+      </div>
+    </section>
+  {% endfor %}
+</div>
+
+<script>
+  // ===== Helpers =====
+  const COLORS = { bar: getCSS('--accent'), dpu: getCSS('--dpu'), str: getCSS('--str') };
+  function getCSS(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  // URL helpers (keep other filters intact)
+  const _url = new URL(window.location.href);
+  const _params = _url.searchParams;
+  function setParamKeepOthers(k, v){ if (v==null) _params.delete(k); else _params.set(k, v); window.location.search = _params.toString(); }
+  function clearParamAndReload(k){ _params.delete(k); window.location.search = _params.toString(); }
+
+  // Use backend default weekly mode ('sum'|'avg') and keep it global
+  const WEEKLY_MODE = '{{ weekly_mode_default|default:"sum" }}' === 'avg' ? 'avg' : 'sum';
+
+  // ===== Simple table helpers =====
+  function renderSimpleTable(el, header, rows){
+    if(!el) return;
+    let thead = '<thead><tr>' + header.map(h=>`<th>${h}</th>`).join('') + '</tr></thead>';
+    let tbody = '<tbody>' + rows.map(r=>'<tr>'+r.map(c=>`<td>${c}</td>`).join('')+'</tr>').join('') + '</tbody>';
+    el.innerHTML = thead + tbody;
+  }
+  function showAs(pairKey, mode){
+    const chart = document.getElementById(pairKey);
+    const tableWrap = document.getElementById(pairKey + '_table_wrap');
+    const btn = document.querySelector(`button.switch-view[data-target="${pairKey}"]`);
+    if(!chart || !tableWrap || !btn) return;
+    if(mode==='table'){
+      chart.classList.add('hidden');
+      tableWrap.classList.remove('hidden');
+      btn.classList.add('active');
+      btn.textContent = 'График';
+    } else {
+      chart.classList.remove('hidden');
+      tableWrap.classList.add('hidden');
+      btn.classList.remove('active');
+      btn.textContent = 'Таблица';
+    }
+  }
+
+  // ===== Table builders for weekly/daily =====
+  function buildWeeklyTableFor(brand){
+    const blocks = chartsCtx[brand];
+    if(!blocks) return;
+    const dat = (WEEKLY_MODE === 'avg') ? blocks.prev5_avg : blocks.prev5_sum;
+    const labels = dat.labels || [];
+    const s = dat.series || {unique_vins:[], dpu:[], str:[]};
+    const rows = labels.map((l,i)=>[
+      l,
+      Math.round(+s.unique_vins[i]||0),
+      (+s.dpu[i]||0).toFixed(2),
+      ((+s.str[i]||0).toFixed(2) + ' %')
+    ]);
+    const el = document.getElementById(brand + '_prev5_table');
+    renderSimpleTable(el, ['Неделя','Проверено','DPU','STR'], rows);
+  }
+  function buildDailyTableFor(brand){
+    const c = chartsCtx[brand];
+    if(!c) return;
+    const labels = c.current.labels || [];
+    const s = c.current.series || {unique_vins:[], dpu:[], str:[]};
+    const yearForWeek = _targetDate.getFullYear();
+    function weekday(lbl){
+      const [dd,mm]=String(lbl||'').split('.');
+      const d=parseInt(dd,10), m=parseInt(mm,10);
+      if(!isNaN(d)&&!isNaN(m)){
+        const dt=new Date(yearForWeek,m-1,d);
+        const RU=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+        return RU[dt.getDay()]||'';
+      }
+      return '';
+    }
+    const rows = labels.map((l,i)=>[
+      l,
+      weekday(l),
+      Math.round(+s.unique_vins[i]||0),
+      (+s.dpu[i]||0).toFixed(2),
+      ((+s.str[i]||0).toFixed(2) + ' %')
+    ]);
+    const el = document.getElementById(brand + '_current_table');
+    renderSimpleTable(el, ['Дата','День','Проверено','DPU','STR'], rows);
+  }
+
+  // ===== Apex options factory =====
+  function makeOptions(title, labels, dpu, str, vins, opts={}){
+    const maxVINs = Math.max(1, ...vins);
+    const maxDPU  = Math.max(1, ...dpu);
+    const topVINs = Math.ceil(maxVINs * 1.1);
+    const topDPU  = Math.ceil(maxDPU  * 1.1);
+
+    // Merge user-provided events with a mounted hook to hide series initially and bold a particular x-axis label
+    const prevEvents = (opts.events || {});
+    const prevMounted = prevEvents.mounted;
+    const mergedEvents = Object.assign({}, prevEvents, {
+      mounted: function(chartCtx, config){
+        if (typeof prevMounted === 'function') {
+          try { prevMounted(chartCtx, config); } catch(e){}
+        }
+        // hide series on mount if requested
+        if (Array.isArray(opts.hideSeries)) {
+          try { opts.hideSeries.forEach(n => chartCtx.hideSeries(n)); } catch(e){}
+        }
+        // bold a particular x-axis label (e.g., today)
+        try {
+          if (typeof opts.boldXIndex === 'number') {
+            const texts = chartCtx.el.querySelectorAll('.apexcharts-xaxis .apexcharts-text');
+            const node = texts && texts[opts.boldXIndex];
+            if (node) {
+              node.style.fontWeight = '700';
+              node.querySelectorAll('tspan').forEach(ts => { ts.style.fontWeight = '700'; });
+            }
+          }
+        } catch(e){}
+      }
+    });
+
+    return {
+      chart: {
+        type: 'line',
+        height: 290,
+        toolbar: {
+          show: true,
+          tools: {
+            download: true,
+            selection: false,   // remove third magnifier
+            zoom: false,        // remove box-zoom
+            zoomin: true,       // keep +
+            zoomout: true,      // keep -
+            pan: false,         // remove hand
+            reset: false        // remove home
+          }
+        },
+        zoom:{ enabled:false },
+        foreColor: getCSS('--text'),
+        fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial',
+        events: mergedEvents
+      },
+      grid: { show: false },
+      title: { text: title, style:{ fontSize:'12px', fontWeight:600, color:getCSS('--muted') } },
+      xaxis: {
+        categories: labels,
+        tickAmount: (opts.showAllX ? labels.length : undefined),
+        tickPlacement: 'on',
+        axisTicks: { show: true },
+        labels:{
+          rotate: 0,
+          hideOverlapping: false,
+          trim: false,
+          formatter: opts.xLabelFormatter ? opts.xLabelFormatter : function(v){ return v; },
+          style: { colors: (opts.xLabelColors || undefined) }
+        }
+      },
+      annotations: (opts.annotationX ? {
+        xaxis: [
+          { x: opts.annotationX, borderColor: getCSS('--accent'), label: { borderColor: getCSS('--accent'), style: { color: '#fff', background: getCSS('--accent'), fontWeight: 700 }, text: 'Сегодня' } }
+        ]
+      } : {}),
+      yaxis: [
+        { show: false, min: 0, max: topVINs },
+        { show: false, min: 0, max: topDPU  },
+        { show: false, min: 0, max: 100     }
+      ],
+      legend: { position: 'top', horizontalAlign: 'left', markers: { radius: 12 } },
+      tooltip: {
+        shared: true,
+        intersect: false,
+        fixed: { enabled: true, position: 'topRight', offsetX: 8, offsetY: 8 },
+        custom: function({series, dataPointIndex, w}) {
+          // Header with x label
+          const xLabel = (w.globals.categoryLabels && w.globals.categoryLabels[dataPointIndex]) || (w.globals.labels && w.globals.labels[dataPointIndex]) || '';
+          const names = w.globals.seriesNames || [];
+          const hiddenIdx = new Set(
+            (w.globals.collapsedSeriesIndices || w.globals.hiddenSeriesIndices || [])
+          );
+          let rows = '';
+          for (let i = 0; i < names.length; i++) {
+            if (hiddenIdx.has(i)) continue; // skip hidden series
+            const val = (series[i] && series[i][dataPointIndex] != null) ? series[i][dataPointIndex] : 0;
+            let fmt = '';
+            if (i === 0) { // Проверено (VINs, integer)
+              fmt = String(Math.round(val));
+            } else if (i === 1) { // DPU
+              fmt = Number(val).toFixed(2);
+            } else { // STR, percent
+              fmt = Number(val).toFixed(2) + ' %';
+            }
+            const markerColor = (w.globals.colors && w.globals.colors[i]) || '#999';
+            rows += `
+              <div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+                <span style="width:10px;height:10px;border-radius:50%;background:${markerColor};display:inline-block;"></span>
+                <span style="min-width:110px;">${names[i]}:</span>
+                <strong>${fmt}</strong>
+              </div>`;
+          }
+          return `
+            <div class="apex-custom-tooltip" style="padding:8px 10px;">
+              <div style="font-weight:700;margin-bottom:6px;">${xLabel}</div>
+              ${rows || '<div style="opacity:.7;">Нет данных</div>'}
+            </div>`;
+        }
+      },
+      stroke: { width: [3,0,3], curve: 'smooth' },
+      dataLabels: { enabled: true, enabledOnSeries: [0,1,2], offsetY: -6, formatter: (val,opts)=>{ const i=opts.seriesIndex; if(i===0) return Math.round(val); if(i===1) return Number(val).toFixed(2); if(i===2) return `${(+val).toFixed(2).replace(/\.00$/, '')} %`; return val; }, style: { fontSize: '11px', fontWeight: 600 } },
+      series: [
+        { name:'Проверено', type:'line',   data:vins, yAxisIndex:0 },
+        { name:'DPU',        type:'column', data:dpu,  yAxisIndex:1 },
+        { name:'STR',        type:'line',   data:str,  yAxisIndex:2 }
+      ],
+      colors: [COLORS.bar, COLORS.dpu, COLORS.str],
+      markers: { size: 3 },
+      plotOptions: { bar: { columnWidth:'55%', borderRadius:8, dataLabels:{ position:'top' }, fill:{ opacity:0.9 } } },
+      fill: { opacity: 1 },
+    }
+  }
+
+  function displayBrand(b){
+    return (b === 'gwm') ? 'GWM' : (b.charAt(0).toUpperCase() + b.slice(1));
+  }
+
+  // ===== Week label click -> change ?date and reload =====
+  function onWeekClickFactory(weeksMeta){
+    return {
+      xAxisLabelClick: function(evt, chartCtx, cfg){
+        const i = cfg.labelIndex;
+        const wk = weeksMeta && weeksMeta[i];
+        if (!wk) return;
+        // backend gives ISO Monday in `start`
+        if (wk.start) {
+          _params.set('date', wk.start);
+          _params.set('weekly', WEEKLY_MODE);
+          window.location.search = _params.toString();
+        }
+      }
+    }
+  }
+
+  // ===== Build charts =====
+  const chartsCtx = {{ charts|safe }};
+
+  // WEEKLY (top row) – use prev5_sum or prev5_avg + click handler
+  const weeklyCharts = {};
+  function renderWeekly(brand){
+    const blocks = chartsCtx[brand];
+    const dat = (WEEKLY_MODE === 'avg') ? blocks.prev5_avg : blocks.prev5_sum;
+    const weeksMeta = dat.weeks || [];
+    const el = document.querySelector('#'+brand+'_prev5');
+    if (!el) return;
+    if (weeklyCharts[brand]) { try{ weeklyCharts[brand].destroy(); }catch(e){} }
+    weeklyCharts[brand] = new ApexCharts(
+      el,
+      makeOptions(
+        displayBrand(brand) + (WEEKLY_MODE==='avg'?' — среднее по неделям':' — по неделям'),
+        dat.labels, dat.series.dpu, dat.series.str, dat.series.unique_vins,
+        { events: onWeekClickFactory(weeksMeta), hideSeries: ['STR'] }
+      )
+    );
+    weeklyCharts[brand].render();
+    // no-op here; table will be built on first toggle click
+  }
+
+  // DAILY (bottom row) – show date + weekday; mark today
+  function getISOWeek(d){ const z=new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const n=(z.getUTCDay()||7); z.setUTCDate(z.getUTCDate()+4-n); const y0=new Date(Date.UTC(z.getUTCFullYear(),0,1)); return Math.ceil((((z-y0)/86400000)+1)/7); }
+  const _targetDate = new Date('{{ target_date }}');
+  const _isoWeekNow = String(getISOWeek(_targetDate)).padStart(2,'0');
+  // Show the "Today" button only when the chosen week is NOT the real current ISO week
+  const _nowGlobal = new Date();
+  const _sameISOWeekGlobal = (getISOWeek(_nowGlobal) === getISOWeek(_targetDate)) && (_nowGlobal.getUTCFullYear() === _targetDate.getUTCFullYear());
+  (function(){
+    const btn = document.getElementById('btnToday');
+    if (btn) btn.style.display = _sameISOWeekGlobal ? 'none' : 'inline-flex';
+  })();
+
+  function renderDaily(brand){
+    const c = chartsCtx[brand];
+    const yearForWeek = _targetDate.getFullYear();
+    // compute today's real date (local) and whether the selected target week equals current ISO week
+    const now = new Date();
+    const sameISOWeek = (getISOWeek(now) === getISOWeek(_targetDate)) && (now.getUTCFullYear() === _targetDate.getUTCFullYear());
+    // if we are on the real current week – highlight today's date; otherwise, no highlight
+    const realTodayLabel = String(now.getDate()).padStart(2,'0') + '.' + String(now.getMonth()+1).padStart(2,'0');
+    const todayLabel = sameISOWeek ? realTodayLabel : null;
+
+    function fmtWithWeekday(v){
+      const [dd,mm]=String(v||'').split('.');
+      const d=parseInt(dd,10), m=parseInt(mm,10);
+      if(!isNaN(d)&&!isNaN(m)){
+        const dt=new Date(yearForWeek,m-1,d);
+        const RU=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+        return [`${dd}.${mm}`, RU[dt.getDay()]||''];
+      }
+      return v;
+    }
+
+    const labelColors = (c.current.labels||[]).map(lbl => (todayLabel && lbl===todayLabel ? getCSS('--accent') : undefined));
+    const boldIndex = (todayLabel ? (c.current.labels || []).indexOf(todayLabel) : -1);
+    new ApexCharts(
+      document.querySelector('#'+brand+'_current'),
+      makeOptions(
+        displayBrand(brand)+' по дням '+_isoWeekNow+' недели',
+        c.current.labels, c.current.series.dpu, c.current.series.str, c.current.series.unique_vins,
+        { xLabelFormatter: fmtWithWeekday, xLabelColors: labelColors, showAllX: true, annotationX: todayLabel, hideSeries: ['STR'], boldXIndex: (boldIndex >= 0 ? boldIndex : undefined) }
+      )
+    ).render();
+  }
+
+  // Initial render
+  Object.keys(chartsCtx).forEach(b => { renderWeekly(b); renderDaily(b); });
+
+  // Wire per-card view toggles (Chart <-> Table)
+  Object.keys(chartsCtx).forEach(brand => {
+    const btnWeekly = document.getElementById('toggle_' + brand + '_prev5');
+    if(btnWeekly){
+      let built = false;
+      btnWeekly.addEventListener('click', ()=>{
+        const wrap = document.getElementById(brand + '_prev5_table_wrap');
+        const isHidden = wrap.classList.contains('hidden');
+        if(isHidden){
+          if(!built){ buildWeeklyTableFor(brand); built = true; }
+          showAs(brand + '_prev5', 'table');
+        } else {
+          showAs(brand + '_prev5', 'chart');
+        }
+      });
+    }
+    const btnDaily = document.getElementById('toggle_' + brand + '_current');
+    if(btnDaily){
+      let builtD = false;
+      btnDaily.addEventListener('click', ()=>{
+        const wrap = document.getElementById(brand + '_current_table_wrap');
+        const isHidden = wrap.classList.contains('hidden');
+        if(isHidden){
+          if(!builtD){ buildDailyTableFor(brand); builtD = true; }
+          showAs(brand + '_current', 'table');
+        } else {
+          showAs(brand + '_current', 'chart');
+        }
+      });
+    }
+  });
+
+  // Weekly mode buttons now change the URL (?weekly=sum|avg) and reload, keeping all filters
+  const btnSum = document.getElementById('btnModeSum');
+  const btnAvg = document.getElementById('btnModeAvg');
+  const btnToday = document.getElementById('btnToday');
+  function setActive(btn){ [btnSum, btnAvg].forEach(b=>b&&b.classList.remove('active')); btn && btn.classList.add('active'); }
+  setActive(WEEKLY_MODE==='avg'?btnAvg:btnSum);
+  if (btnSum) btnSum.addEventListener('click', ()=> setParamKeepOthers('weekly','sum'));
+  if (btnAvg) btnAvg.addEventListener('click', ()=> setParamKeepOthers('weekly','avg'));
+  if (btnToday) btnToday.addEventListener('click', ()=>{
+    _params.delete('date');           // remove any fixed date
+    _params.set('weekly', WEEKLY_MODE); // keep mode
+    window.location.search = _params.toString();
+  });
+</script>
+{% endblock %}

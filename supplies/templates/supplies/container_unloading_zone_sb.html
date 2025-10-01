@@ -1,0 +1,274 @@
+{% extends "users/base.html" %}
+
+{% block title %}Фиксация состояния контейнера{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Фиксация состояния контейнера</h2>
+
+    {% if messages %}
+        <div class="alert alert-success">
+            {% for message in messages %}
+                {{ message }}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <!-- 📌 Номер контейнера -->
+        <div class="mb-3">
+            <label class="form-label">Номер контейнера</label>
+            {{ form.container_number }}
+        </div>
+        
+        <!-- 📌 Фото номера контейнера -->
+        <div class="mb-3">
+            <label class="form-label">Фото номера контейнера</label>
+            <input type="file" name="container_number_image" id="container_number_image" class="form-control">
+            <button type="button" class="btn btn-primary mt-2" onclick="openCamera('container_number_image')">📷 Сделать фото</button>
+            <img id="container_number_image_preview" src="" class="img-fluid mt-2" style="display:none;">
+        </div>
+        
+        <!-- 📌 Описание контейнера -->
+        <div class="mb-3">
+            <label class="form-label">Описание контейнера</label>
+            {{ form.container_description }}
+        </div>
+        
+        <!-- 📌 Фото пломбы контейнера -->
+        <div class="mb-3">
+            <label class="form-label">Фото пломбы контейнера</label>
+            <input type="file" name="seal_image" id="seal_image" class="form-control">
+            <button type="button" class="btn btn-primary mt-2" onclick="openCamera('seal_image')">📷 Сделать фото</button>
+            <img id="seal_image_preview" src="" class="img-fluid mt-2" style="display:none;">
+        </div>
+        
+        <!-- 📌 Описание пломбы -->
+        <div class="mb-3">
+            <label class="form-label">Описание пломбы</label>
+            {{ form.seal_description }}
+        </div>
+        
+        <!-- 📌 Состояние контейнера -->
+        <div class="mb-3">
+            <label class="form-label">Состояние контейнера</label>
+            {{ form.container_status }}
+        </div>
+        
+        <!-- 📌 Фото контейнера (множественная загрузка) -->
+        <div class="mb-3">
+            <label class="form-label">Фото контейнера</label>
+            <input type="file" name="container_images" id="container_images" class="form-control" multiple>
+            <button type="button" class="btn btn-primary mt-2" onclick="openCamera('container_images')">📷 Сделать фото</button>
+            <div id="container_images_preview" class="d-flex flex-wrap mt-2"></div>
+        </div>
+        
+        <!-- 📌 Галерея загруженных фото контейнера -->
+        <div class="row mt-3" id="container_images_gallery"></div>
+        
+        <button type="submit" class="btn btn-danger w-100">📌 Зафиксировать состояние контейнера</button>
+    </form>
+</div>
+
+<!-- ✅ Модальное окно камеры -->
+<div id="camera_modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; flex-direction:column;">
+    <video id="camera_feed" style="width: 90%; max-width: 500px; object-fit: contain;"></video>
+    <button id="capture_button" class="btn btn-success mt-3">📸 Сделать фото</button>
+    <button id="close_camera" class="btn btn-danger mt-2">❌ Закрыть</button>
+</div>
+
+<canvas id="camera_canvas" style="display:none;"></canvas>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    console.log("🚀 JavaScript загружен!");
+
+    // ✅ Камера
+    let modal = document.getElementById("camera_modal");
+    let video = document.getElementById("camera_feed");
+    let closeButton = document.getElementById("close_camera");
+    let captureButton = document.getElementById("capture_button");
+    let canvas = document.createElement("canvas");
+
+    let activeInput = null;
+    let activePreview = null;
+    let activeStream = null;
+
+    let containerImagesInput = document.getElementById("container_images");
+    let galleryContainer = document.getElementById("container_images_gallery");
+
+    console.log("📸 Камера готова!");
+
+    window.openCamera = function(inputId) {
+        console.log(`📷 Открытие камеры для ${inputId}`);
+
+        activeInput = document.getElementById(inputId);
+        activePreview = document.getElementById(`${inputId}_preview`);
+
+        if (!activeInput) {
+            console.error(`❌ Ошибка: Не найден элемент input #${inputId}`);
+            return;
+        }
+
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(function(stream) {
+            activeStream = stream;
+            video.srcObject = stream;
+            video.play();
+            modal.style.display = "flex";
+            console.log("✅ Камера успешно открыта!");
+        })
+        .catch(function(error) {
+            alert("Ошибка доступа к камере");
+            console.error("❌ Ошибка камеры:", error);
+        });
+    };
+
+    function closeCamera() {
+        console.log("❌ Закрытие камеры...");
+
+        if (activeStream) {
+            activeStream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+            activeStream = null;
+        }
+
+        modal.style.display = "none";
+    }
+
+    captureButton.addEventListener("click", function() {
+        console.log("📸 Захват изображения...");
+        let context = canvas.getContext("2d");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        let timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        let fileName = `photo_${timestamp}.jpg`;
+
+        canvas.toBlob(function(blob) {
+            let file = new File([blob], fileName, { type: "image/jpeg" });
+
+            if (activeInput.id === "container_images") {
+                addFileToContainerImages(file);
+            } else {
+                let dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                activeInput.files = dataTransfer.files;
+
+                if (activePreview) {
+                    let reader = new FileReader();
+                    reader.onload = function(e) {
+                        activePreview.src = e.target.result;
+                        activePreview.style.display = "block";
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            console.log("✅ Фото успешно сохранено в input:", fileName);
+        }, "image/jpeg");
+
+        closeCamera();
+    });
+
+    closeButton.addEventListener("click", closeCamera);
+    modal.addEventListener("click", function(event) {
+        if (event.target === modal) {
+            closeCamera();
+        }
+    });
+
+    // ✅ Функция для добавления нескольких изображений контейнера
+    function addFileToContainerImages(file) {
+        let dataTransfer = new DataTransfer();
+
+        let existingFiles = containerImagesInput.files;
+        for (let i = 0; i < existingFiles.length; i++) {
+            dataTransfer.items.add(existingFiles[i]);
+        }
+
+        dataTransfer.items.add(file);
+        containerImagesInput.files = dataTransfer.files;
+
+        updateContainerGallery();
+    }
+
+    // ✅ Обновление галереи контейнера
+    function updateContainerGallery() {
+        galleryContainer.innerHTML = "";
+        let files = containerImagesInput.files;
+
+        for (let i = 0; i < files.length; i++) {
+            let file = files[i];
+            let reader = new FileReader();
+
+            reader.onload = function(e) {
+                let colDiv = document.createElement("div");
+                colDiv.classList.add("col-md-3", "mb-3");
+
+                let img = document.createElement("img");
+                img.src = e.target.result;
+                img.classList.add("img-fluid", "rounded", "shadow-sm");
+
+                let deleteBtn = document.createElement("button");
+                deleteBtn.classList.add("btn", "btn-danger", "btn-sm", "mt-1");
+                deleteBtn.textContent = "Удалить";
+                deleteBtn.onclick = function() {
+                    removeContainerFile(i);
+                };
+
+                colDiv.appendChild(img);
+                colDiv.appendChild(deleteBtn);
+                galleryContainer.appendChild(colDiv);
+            };
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function removeContainerFile(index) {
+        let dt = new DataTransfer();
+        let files = containerImagesInput.files;
+
+        for (let i = 0; i < files.length; i++) {
+            if (i !== index) {
+                dt.items.add(files[i]);
+            }
+        }
+
+        containerImagesInput.files = dt.files;
+        updateContainerGallery();
+    }
+
+    containerImagesInput.addEventListener("change", updateContainerGallery);
+
+    // ✅ Функция для закрытия камеры
+    function closeCamera() {
+        console.log("❌ Закрытие камеры...");
+        if (activeStream) {
+            activeStream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+            activeStream = null;
+        }
+        modal.style.display = "none";
+    }
+
+    // ✅ Автоматически закрываем камеру при загрузке страницы
+    window.addEventListener("load", function() {
+        console.log("🔄 Авто-закрытие камеры при загрузке страницы");
+        closeCamera();
+    });
+
+    closeButton.addEventListener("click", closeCamera);
+
+    modal.addEventListener("click", function(event) {
+        if (event.target === modal) {
+            closeCamera();
+        }
+    });
+});
+</script>
+
+{% endblock %}

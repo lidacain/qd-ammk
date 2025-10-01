@@ -1,0 +1,225 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/favicon_qd_fullsize.png' %}">
+    <link rel="shortcut icon" href="{% static 'favicon/favicon_qd_fullsize.ico' %}">
+
+    <title>Просмотр изображения</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        .nav-btn {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(255, 255, 255, 0.3);
+            border: none;
+            color: white;
+            font-size: 30px;
+            padding: 10px 20px;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .nav-btn.left {
+            left: 10px;
+        }
+
+        .nav-btn.right {
+            right: 10px;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+        }
+
+        #image {
+            max-height: none;
+            max-width: none;
+            height: auto;
+            width: auto;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: top left;
+            user-select: none;
+            -webkit-user-drag: none;
+            pointer-events: auto; /* обязательно для drag */
+        }
+
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 10px 16px;
+            background-color: rgba(255, 255, 255, 0.2);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            z-index: 20;
+            transition: background-color 0.3s;
+        }
+        .back-button:hover {
+            background-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .rotate-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;        /* правый нижний угол */
+            background-color: rgba(255,255,255,0.25);
+            border: none;
+            color: white;
+            font-size: 26px;
+            padding: 10px 14px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 20;
+            transition: background-color .3s;
+        }
+        .rotate-btn:hover {
+            background-color: rgba(255,255,255,0.45);
+        }
+        .rotate-btn.left  { right: 70px; }  /* ↺ */
+    </style>
+</head>
+<body>
+
+<a class="back-button" href="#" onclick="window.history.back(); return false;">← Назад</a>
+
+<div id="container">
+    <img id="image" src="{{ image_url }}" alt="Фото">
+</div>
+<button class="nav-btn left" onclick="showPrev()">&#10094;</button>
+<button class="nav-btn right" onclick="showNext()">&#10095;</button>
+<button class="rotate-btn left"  onclick="rotate(-90)">&#8634;</button> <!-- ↺ -->
+<button class="rotate-btn"       onclick="rotate( 90)">&#8635;</button> <!-- ↻ -->
+
+<script>
+    const container = document.getElementById('container');
+    const img = document.getElementById('image');
+
+    // 🖼️ Получаем список фото и текущий индекс из шаблона Django
+    const allPhotos = {{ all_photos|safe }};
+    let currentIndex = {{ current_index|default:0 }};
+    let scale = 1, translateX = 0, translateY = 0, rotation = 0;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+
+    function updateImage() {
+        img.src = allPhotos[currentIndex];
+        resetTransform();
+    }
+
+    function resetTransform() {
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        rotation   = 0;   // ← добавили
+        updateTransform();
+    }
+
+    function updateTransform() {
+        img.style.transform =
+            `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg) scale(${scale})`;
+    }
+
+    img.onload = function () {
+        const ratioX = container.clientWidth / img.naturalWidth;
+        const ratioY = container.clientHeight / img.naturalHeight;
+        scale = Math.min(ratioX, ratioY) * 0.95;
+        translateX = (container.clientWidth - img.naturalWidth * scale) / 2;
+        translateY = (container.clientHeight - img.naturalHeight * scale) / 2;
+        updateTransform();
+    };
+
+    container.addEventListener("wheel", function (e) {
+        e.preventDefault();
+
+        const rect = container.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left;
+        const offsetY = e.clientY - rect.top;
+
+        const prevScale = scale;
+        const delta = e.deltaY < 0 ? 0.1 : -0.1;
+        scale = Math.min(Math.max(0.2, scale + delta), 5);
+
+        // Вычисление смещения к курсору
+        const zoomFactor = scale / prevScale;
+        translateX = offsetX - (offsetX - translateX) * zoomFactor;
+        translateY = offsetY - (offsetY - translateY) * zoomFactor;
+
+        updateTransform();
+    });
+
+    container.addEventListener("mousedown", function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        isDragging = true;
+        startX = e.clientX - translateX;
+        startY = e.clientY - translateY;
+        container.style.cursor = "grabbing";
+    });
+
+    container.addEventListener("mousemove", function (e) {
+        if (!isDragging) return;
+        translateX = e.clientX - startX;
+        translateY = e.clientY - startY;
+        updateTransform();
+    });
+
+    container.addEventListener("mouseup", () => {
+        isDragging = false;
+        container.style.cursor = "grab";
+    });
+
+    container.addEventListener("mouseleave", () => {
+        isDragging = false;
+        container.style.cursor = "grab";
+    });
+
+    // 🔁 Переключение фото
+    function showPrev() {
+        if (currentIndex > 0) {
+            currentIndex--;
+            updateImage();
+        }
+    }
+
+    function showNext() {
+        if (currentIndex < allPhotos.length - 1) {
+            currentIndex++;
+            updateImage();
+        }
+    }
+
+    function rotate(angle) {
+        rotation = (rotation + angle) % 360;
+        updateTransform();
+    }
+
+    // ⌨️ Стрелки клавиатуры
+    window.addEventListener("keydown", function(e) {
+        if (e.key === "ArrowLeft") showPrev();
+        if (e.key === "ArrowRight") showNext();
+    });
+
+    // 🖱️ Запретить контекстное меню
+    window.addEventListener("contextmenu", e => e.preventDefault());
+</script>
+</body>
+</html>

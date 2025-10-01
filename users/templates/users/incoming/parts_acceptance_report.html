@@ -1,0 +1,155 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block title %}Отчёт — Зона выгрузки комплектующих{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+    <a href="{% url 'incoming_workshop_dashboard' %}" class="btn btn-outline-secondary mb-4">← Назад</a>
+    <h3 class="mb-4 text-center">Отчёт — Зона выгрузки комплектующих</h3>
+
+    <div class="row">
+
+        <!-- Левая колонка: ТОП 20 дефектов -->
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-center mb-3">Топ 20 дефектов</h5>
+                    <table class="table table-striped">
+                        <tbody>
+                            {% for defect, count in top_defects %}
+                                {% with defect|split:"—" as parts %}
+                                    <tr>
+                                        <td>
+                                            <div><strong>Деталь:</strong> {{ parts.0|default:"—"|strip }}</div>
+                                            <div><strong>Дефект:</strong> {{ parts.1|default:"—"|strip }}</div>
+                                        </td>
+                                        <td class="text-end align-middle">{{ count }}</td>
+                                    </tr>
+                                {% endwith %}
+                            {% empty %}
+                                <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Центральная колонка: Фильтры + метрики -->
+        <div class="col-md-4 mb-4">
+            <form method="get" class="mb-4 text-center">
+                <div class="d-flex flex-column align-items-center gap-3">
+
+                    <!-- Произвольный диапазон -->
+                    <div class="w-100 text-start">
+                        <label class="form-label">Произвольный период:</label>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control">
+                            <span>—</span>
+                            <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control">
+                        </div>
+                        <div class="form-text">Если заданы даты, они имеют приоритет над стандартным периодом</div>
+                    </div>
+
+                    <!-- Грейды -->
+                    <div class="w-100 text-start">
+                        <label class="form-label">Грейды:</label>
+                        <select name="grade" multiple onchange="this.form.submit()" class="form-select" style="min-height: 150px;">
+                            {% for grade in all_grades %}
+                                <option value="{{ grade }}" {% if grade in selected_grades %}selected{% endif %}>{{ grade }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Удерживайте Ctrl (или Cmd) для выбора нескольких</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary mt-2">Применить фильтры</button>
+                </div>
+            </form>
+
+            <!-- 📦 Карточки -->
+            <div class="d-grid gap-3">
+                <div class="card shadow-sm border-secondary text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Всего осмотров</h6>
+                        <p class="fs-4 text-secondary">{{ total_inspections }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-warning text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Кузова с дефектами</h6>
+                        <p class="fs-4">{{ inspections_with_defects }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-danger text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Всего дефектов</h6>
+                        <p class="fs-4 text-danger">{{ total_defects }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-primary text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">DPU</h6>
+                        <p class="fs-4">{{ dpu }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-success text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">STR (%)</h6>
+                        <p class="fs-4">{{ str_percentage }}%</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Правая колонка: ТОП 20 контроллеров -->
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-center mb-3">Топ 20 контроллеров</h5>
+                    <table class="table table-striped">
+                        <tbody>
+                            {% for controller, count in top_controllers %}
+                                <tr>
+                                    <td>{{ controller }}</td>
+                                    <td class="text-end">{{ count }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const startDateInput = document.getElementById("start_date");
+    const endDateInput = document.getElementById("end_date");
+
+    startDateInput.addEventListener("change", function () {
+        if (startDateInput.value) {
+            endDateInput.min = startDateInput.value;
+        } else {
+            endDateInput.removeAttribute("min");
+        }
+    });
+
+    endDateInput.addEventListener("change", function () {
+        if (endDateInput.value) {
+            startDateInput.max = endDateInput.value;
+        } else {
+            startDateInput.removeAttribute("max");
+        }
+    });
+
+    // триггерим вручную
+    if (startDateInput.value) endDateInput.min = startDateInput.value;
+    if (endDateInput.value) startDateInput.max = endDateInput.value;
+});
+</script>
+{% endblock %}

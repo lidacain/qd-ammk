@@ -1,0 +1,1421 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Показатели Dashboard{% endblock %}
+
+{% block content %}
+<style>
+/* --- Временный fallback-стиль. Потом перенесём в static/css/mes_dashboard.css --- */
+:root{
+  --card-h: 88px;          /* единая высота карточек */
+  --gap: 12px;             /* отступ между элементами в сетке */
+  --col-w-trim: 140px;     /* ширина колонок TRIM (3 шт.) */
+  --col-w-mid: 170px;      /* ширина блоков BQA/QA/VES/UUD */
+  --spacer-w: 24px;        /* ширина промежутка между TRIM и BQA */
+  --card-bg: #ffffff;      /* белый фон карточек */
+  --card-fg: #111111;      /* тёмный текст на карточках */
+  --chip-bg: #f5f6f7;
+  --chip-bd: #ced4da;
+}
+
+.mes-board{
+  --gcol:12;
+  display:grid;
+  gap:14px;
+  grid-template-columns: 120px repeat(3, 190px) 210px repeat(2, 190px) 210px;
+  align-items:start;
+}
+
+.mes-board-trim{
+  display:grid;
+  gap: var(--gap);
+  grid-template-columns:
+    repeat(3, var(--col-w-trim))
+    var(--spacer-w)
+    var(--col-w-mid) repeat(2, var(--col-w-mid)) var(--col-w-mid);
+  align-items:start;
+}
+.mes-board-trim .mes-label{ display:none; }
+
+.mes-node.compact{
+  width: 100%;
+  height: var(--card-h);
+  padding: 8px 10px;
+  display:grid;
+  grid-template-rows: 28px 1fr; /* шапка, затем счётчик/чипы */
+  align-content:center;
+  box-sizing:border-box;
+}
+
+.grid-col-1{grid-column:1}
+.row-break{grid-column:1 / -1; height:0}
+
+.mes-label{
+  background:#f8f9fa;
+  border:1px solid #dee2e6;
+  border-radius:6px;
+  padding:8px 10px;
+  text-align:center;
+  font-weight:600;
+  color:#6c757d
+}
+
+.mes-node{
+  position:relative;
+  background:var(--card-bg);
+  color:var(--card-fg);
+  border-radius:10px;
+  padding:12px 10px;
+  min-height:78px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  box-shadow:0 1px 0 rgba(0,0,0,.04), 0 6px 18px rgba(0,0,0,.10);
+  box-sizing:border-box;
+  cursor:pointer;
+}
+
+.mes-node .title{
+  font-weight:700;
+  letter-spacing:.3px;
+  text-transform:uppercase;
+  font-size:.9rem;
+  text-align:center;
+  margin:0;
+  line-height:1.1;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical; /* максимум 2 строки */
+  overflow:hidden;
+  min-height:26px;
+}
+.mes-node .title .k{display:block;}
+.mes-node .title .line{display:block; font-size:.85rem; opacity:.9;}
+
+.mes-node .counter{
+  font-size:1.4rem;     /* чуть меньше, чтобы всё влезало */
+  font-weight:800;
+  text-align:center;
+  line-height:1;
+  align-self:center; justify-self:center;
+}
+
+.mes-node .subgrid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:4px;
+  margin-top:2px;
+  height:40px;          /* фикс высота под 3 чипа */
+  align-items:center;
+}
+
+.mes-node .subgrid.two{ grid-template-columns: repeat(2,1fr); height: 36px; }
+
+/* --- Mini KPI cards (right of VES OUT, above SIGN OFF) --- */
+/* --- Mini KPI cards (right of VES OUT, above SIGN OFF) --- */
+.mes-mini{ display:grid; grid-template-columns: 1fr; gap:8px; align-items:stretch; }
+.mes-mini .mini-card{
+  background: var(--card-bg); color: var(--card-fg);
+  border:1px solid #d7dce2; border-radius:8px;
+  padding:6px 8px; min-height:40px;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 1px 0 rgba(0,0,0,.04);
+}
+.mes-mini .mini-card .label{ font-weight:800; letter-spacing:.03em; text-transform:uppercase; font-size:.8rem; color:#6b7a90; }
+.mes-mini .mini-card .value{ font-weight:800; font-size:1.0rem; margin-left:8px; color:#111; }
+@media (max-width: 1400px){ .mes-mini .mini-card{ min-height:38px; padding:5px 6px; } .mes-mini .mini-card .label{ font-size:.75rem; } .mes-mini .mini-card .value{ font-size:.96rem; } }
+
+.mes-chip{
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-bd);
+  border-radius:8px;
+  padding:3px 6px;
+  text-align:center;
+  color:var(--card-fg);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+}
+.mes-chip .counter{
+  font-size:1.05rem;
+  font-weight:800;
+  line-height:1;
+  color:var(--card-fg);
+}
+.mes-chip .small-note{
+  color:#6c757d;
+  opacity:.95;
+  font-weight:700;
+  letter-spacing:.02em;
+  text-transform:uppercase;
+  font-size:.68rem;
+}
+
+.separator-y{display:none;}
+.arrow{
+  position:absolute;
+  top:50%;
+  right:-10px;
+  transform:translateY(-50%);
+  width:0;height:0;
+  border-top:8px solid transparent;
+  border-bottom:8px solid transparent;
+  border-left:10px solid var(--card-bg);
+  filter:drop-shadow(0 1px 0 rgba(0,0,0,.1))
+}
+/* Hide arrows everywhere except TRIM widgets */
+.mes-node:not([data-section="trim"]) > .arrow{ display:none !important; }
+
+.grid-span-3{grid-column: 2 / span 3}
+.grid-col-2{grid-column:2}
+.grid-col-3{grid-column:3}
+.grid-col-4{grid-column:4}
+.grid-col-5{grid-column:5}
+.grid-col-6{grid-column:6}
+.grid-col-7{grid-column:7}
+.grid-col-8{grid-column:8}
+.grid-row-1{grid-row:1}
+.grid-row-2{grid-row:2}
+.grid-row-3{grid-row:3}
+
+
+.center-over-seam{ grid-column: 6 / span 2; justify-self: center; width: var(--col-w-mid); }
+.shift-right-half{ transform: translateX(calc(var(--col-w-mid) / 2)); }
+
+.row-gap{height:8px}
+.section-title{margin: 18px 0 10px; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:.08em}
+.small-note{font-size:.82rem; color:#6c757d}
+
+@media (max-width: 1400px){
+  .mes-board{grid-template-columns: 100px repeat(3, 1fr) 200px repeat(2, 1fr) 200px}
+  .mes-board-trim{
+    --col-w-trim: 120px;
+    --col-w-mid: 150px;
+    --spacer-w: 16px;
+    --gap: 10px;
+  }
+  .mes-node .counter{ font-size:1.3rem; }
+  .mes-chip .counter{ font-size:1rem; }
+}
+
+.mes-filters{
+  display:grid;
+  grid-template-columns: 200px 200px 280px auto;
+  gap:10px;
+  align-items:center;
+  margin: 8px 0 12px;
+}
+.mes-filters .form-control{ height:38px; }
+.mes-filters .form-select{ height:38px; min-height:38px; }
+
+.mes-filters .btn{ height:38px; }
+
+/* Multiselect dropdown (checkbox list) */
+.multidrop{ position:relative; }
+.multidrop > .btn{ height:38px; }
+.multidrop.open > .multidrop-menu{ display:block; }
+.multidrop-menu{
+  position:absolute; top:100%; left:0; z-index:1050;
+  min-width:260px; max-height:260px; overflow:auto;
+  background:#fff; border:1px solid #dee2e6; border-radius:8px;
+  padding:8px; margin-top:4px; display:none;
+  box-shadow:0 6px 20px rgba(0,0,0,.15);
+}
+.multidrop .md-search{ margin-bottom:6px; }
+.multidrop .form-check{ margin:4px 2px; }
+
+.mes-dates{
+  display:grid;
+  grid-template-columns: 300px 300px 1fr; /* from, to, presets+apply */
+  gap:10px;
+  align-items:center;
+  margin: 6px 0 10px;
+}
+.mes-dates .form-control,
+.mes-dates .btn{ height:38px; }
+
+/* Chips / Presets */
+.preset-chips .chip{
+  border:1px solid #ced4da;
+  background:#f8f9fa;
+  border-radius:999px;
+  padding:6px 12px;
+  font-weight:600;
+  font-size:.9rem;
+}
+.preset-chips .chip:hover{ background:#e9ecef; }
+
+  .filterbar-wrapper { position: relative; }
+  .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .filterbar {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .5rem .75rem; background: rgba(255,255,255,.9);
+    border-radius: 14px; backdrop-filter: blur(6px); white-space: nowrap;
+  }
+  .input-chip {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: #fff; border: 1px solid #e6e8ef; padding: .25rem .5rem;
+    border-radius: 12px;
+  }
+  .input-chip > span { font-weight: 600; color: #3a3f58; }
+  .input-chip input { border: none; padding: .25rem .4rem; height: 32px; min-width: 225px; }
+  .input-chip input:focus { box-shadow: none; }
+
+  .chip-btn {
+    border: 1px solid #e6e8ef; background: #fff; border-radius: 999px;
+    padding: .4rem .9rem; font-weight: 600; cursor: pointer;
+  }
+  .chip-btn:hover { border-color: #cbd0dc; }
+  .chip-btn.active { border-color: #2d51ff; box-shadow: 0 0 0 2px rgba(45,81,255,.12) inset; }
+
+  .chip-shift { background: #f7f8ff; }
+  .divider { width: 1px; height: 26px; background: #e6e8ef; display: inline-block; margin: 0 .25rem; }
+
+  .report-buttons .btn { white-space: normal; } /* чтобы длинный текст влезал */
+
+
+</style>
+
+
+
+<div class="container-fluid py-1">
+
+
+  <div id="mes-status" class="alert alert-secondary py-1 px-2 mb-2" style="display:none;"></div>
+
+  <!-- ===== ПЕРИОД (дата С/ПО) ===== -->
+  <div class="filterbar-wrapper">
+    <div class="filterbar scroll-x">
+      <div class="input-chip">
+        <span>С</span>
+        <input type="datetime-local" id="dt-from" class="form-control form-control-sm">
+      </div>
+      <div class="input-chip">
+        <span>ПО</span>
+        <input type="datetime-local" id="dt-to" class="form-control form-control-sm">
+      </div>
+
+      <button class="chip-btn" data-preset="today">Сегодня</button>
+      <button class="chip-btn" data-preset="yesterday">Вчера</button>
+      <button class="chip-btn" data-preset="thisWeek">Эта неделя</button>
+
+      <span class="divider"></span>
+
+      <button class="chip-btn chip-shift" data-shift="s1">1 смена</button>
+      <button class="chip-btn chip-shift" data-shift="s2">2 смена</button>
+    </div>
+  </div>
+
+  <!-- ===== КНОПКИ ОТЧЁТОВ СНИЗУ ===== -->
+  <div class="report-buttons mt-3 d-flex gap-2">
+    <a href="{% url 'qrqc_dashboard' %}" class="btn btn-light btn-md flex-fill text-wrap">
+      Отчёт по качеству
+    </a>
+    <a href="{% url 'line_stats:offtake' %}" class="btn btn-light btn-md flex-fill text-wrap">
+      Статистика схода линии
+    </a>
+  </div>
+
+  <br>
+
+  <!-- Заголовок/фильтры можно вставить здесь (позже) -->
+
+  <!-- ===== ВЕРХНИЙ БЛОК: «по линии» (аналог верхней части схемы) ===== -->
+  <div class="mes-board mes-board-trim">
+
+    <!-- TRIM: три линии — сверху CHERY, по центру GWM, снизу CHANGAN -->
+    <!-- CHERY -->
+    <div class="mes-node compact grid-col-1 grid-row-1" id="trim-in-chery" data-section="trim" data-line="chery" data-metric="trim_in">
+      <div class="title"><span class="k">TRIM IN</span><span class="line">CHERY</span></div>
+      <div class="counter" id="c-trim-in-chery">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-2 grid-row-1" id="wip-trim-chery" data-section="trim" data-line="chery" data-metric="wip_trim">
+      <div class="title"><span class="k">WIP TRIM</span><span class="line">CHERY</span></div>
+      <div class="counter" id="c-wip-trim-chery">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-3 grid-row-1" id="trim-out-chery" data-section="trim" data-line="chery" data-metric="trim_out">
+      <div class="title"><span class="k">TRIM OUT</span><span class="line">CHERY</span></div>
+      <div class="counter" id="c-trim-out-chery">0</div>
+    </div>
+
+    <!-- GWM -->
+    <div class="mes-node compact grid-col-1 grid-row-2" id="trim-in-gwm" data-section="trim" data-line="gwm" data-metric="trim_in">
+      <div class="title"><span class="k">TRIM IN</span><span class="line">GWM</span></div>
+      <div class="counter" id="c-trim-in-gwm">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-2 grid-row-2" id="wip-trim-gwm" data-section="trim" data-line="gwm" data-metric="wip_trim">
+      <div class="title"><span class="k">WIP TRIM</span><span class="line">GWM</span></div>
+      <div class="counter" id="c-wip-trim-gwm">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-3 grid-row-2" id="trim-out-gwm" data-section="trim" data-line="gwm" data-metric="trim_out">
+      <div class="title"><span class="k">TRIM OUT</span><span class="line">GWM</span></div>
+      <div class="counter" id="c-trim-out-gwm">0</div>
+    </div>
+
+    <!-- CHANGAN -->
+    <div class="mes-node compact grid-col-1 grid-row-3" id="trim-in-changan" data-section="trim" data-line="changan" data-metric="trim_in">
+      <div class="title"><span class="k">TRIM IN</span><span class="line">CHANGAN</span></div>
+      <div class="counter" id="c-trim-in-changan">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-2 grid-row-3" id="wip-trim-changan" data-section="trim" data-line="changan" data-metric="wip_trim">
+      <div class="title"><span class="k">WIP TRIM</span><span class="line">CHANGAN</span></div>
+      <div class="counter" id="c-wip-trim-changan">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-3 grid-row-3" id="trim-out-changan" data-section="trim" data-line="changan" data-metric="trim_out">
+      <div class="title"><span class="k">TRIM OUT</span><span class="line">CHANGAN</span></div>
+      <div class="counter" id="c-trim-out-changan">0</div>
+    </div>
+
+    <!-- BQA агрегатор -->
+    <div class="mes-node compact grid-col-5 grid-row-2" id="bqa-top" data-section="bqa">
+      <div class="title">Buffer QA</div>
+      <div class="subgrid">
+        <div class="mes-chip" data-metric="bqa_in"><div class="small-note">IN</div><div class="counter" id="c-bqa-in">0</div></div>
+        <div class="mes-chip" data-metric="bqa_wip_today"><div class="small-note">Today</div><div class="counter" id="c-bqa-wip-today">0</div></div>
+        <div class="mes-chip" data-metric="bqa_wip_all"><div class="small-note">ALL</div><div class="counter" id="c-bqa-wip-all">0</div></div>
+      </div>
+      <span class="arrow" style="right:-12px;"></span>
+    </div>
+
+    <!-- QA линия -->
+    <div class="mes-node compact grid-col-6 grid-row-2" id="qa-in-top" data-section="qa" data-metric="qa_in">
+      <div class="title">QA IN</div>
+      <div class="counter" id="c-qa-in">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-7 grid-row-2" id="wip-qa-top" data-section="qa" data-metric="wip_qa">
+      <div class="title">WIP QA</div>
+      <div class="counter" id="c-wip-qa">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-8 grid-row-2" id="sign-off-top" data-section="qa" data-metric="sign_off">
+      <div class="title">SIGN OFF</div>
+      <div class="counter" id="c-sign-off">0</div>
+    </div>
+    <!-- Mini KPIs for QA (DPU & STR) aligned to the right of VES OUT, above SIGN OFF -->
+    <div class="grid-col-8 grid-row-1 shift-right-half">
+      <div class="mes-mini">
+        <div class="mini-card" title="Defects Per Unit"><span class="label">DPU</span><span class="value" id="c-qa-dpu-mini">0.00</span></div>
+        <div class="mini-card" title="Straight to SGP"><span class="label">STR</span><span class="value" id="c-qa-str-mini">0%</span></div>
+      </div>
+    </div>
+
+    <!-- VES (верхняя параллельная ветка) -->
+    <div class="mes-node compact grid-col-5 grid-row-1 shift-right-half" id="ves-in-top" data-section="ves" data-metric="ves_in">
+      <div class="title">VES IN</div>
+      <div class="counter" id="c-ves-in">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-6 grid-row-1 shift-right-half" id="wip-ves-top" data-section="ves" data-metric="wip_ves">
+      <div class="title">WIP VES</div>
+      <div class="counter" id="c-wip-ves">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-7 grid-row-1 shift-right-half" id="ves-out-top" data-section="ves" data-metric="ves_out">
+      <div class="title">VES OUT</div>
+      <div class="counter" id="c-ves-out">0</div>
+    </div>
+    <div class="separator-y"></div>
+
+    <!-- UUD (средняя ветка) -->
+    <div class="mes-node compact grid-col-5 grid-row-3 shift-right-half" id="uud-in-top" data-section="uud" data-metric="uud_in">
+      <div class="title">UUD IN</div>
+      <div class="subgrid">
+        <div class="mes-chip" data-metric="uud_in"><div class="small-note">IN</div><div class="counter" id="c-uud-in">0</div></div>
+        <div class="mes-chip" data-metric="uud_in_wip_today"><div class="small-note">Today</div><div class="counter" id="c-uud-in-wip-today">0</div></div>
+        <div class="mes-chip" data-metric="uud_in_wip_all"><div class="small-note">ALL</div><div class="counter" id="c-uud-in-wip-all">0</div></div>
+      </div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-6 grid-row-3 shift-right-half" id="wip-uud-top" data-section="uud" data-metric="wip_uud">
+      <div class="title">WIP UUD</div>
+      <div class="counter" id="c-wip-uud">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-7 grid-row-3 shift-right-half" id="uud-out-top" data-section="uud" data-metric="uud_out">
+      <div class="title">UUD OUT</div>
+      <div class="subgrid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="mes-chip" data-metric="uud_out"><div class="small-note">OUT</div><div class="counter" id="c-uud-out">0</div></div>
+        <div class="mes-chip" data-metric="uud_out_wip"><div class="small-note">Buffer</div><div class="counter" id="c-uud-out-wip">0</div></div>
+      </div>
+    </div>
+
+  </div> <!-- /.mes-board -->
+
+    <br>
+    <!-- ===== ФИЛЬТРЫ ДЛЯ НИЖНЕГО БЛОКА ===== -->
+  <div class="mes-filters">
+    <div class="multidrop" id="md-brand">
+      <button type="button" class="btn btn-primary w-100" data-placeholder="Бренды">Бренды</button>
+      <div class="multidrop-menu"></div>
+    </div>
+    <div class="multidrop" id="md-model">
+      <button type="button" class="btn btn-primary w-100" data-placeholder="Модели">Модели</button>
+      <div class="multidrop-menu"></div>
+    </div>
+    <div class="d-flex flex-column">
+      <input id="f-vin" class="form-control" placeholder="VIN (часть или полный)" list="vin-suggest">
+      <datalist id="vin-suggest"></datalist>
+    </div>
+    <div class="d-flex gap-2 align-items-start">
+      <button id="f-apply" class="btn btn-primary">Применить</button>
+      <button id="f-clear" class="btn btn-danger">Сброс</button>
+    </div>
+  </div>
+
+  <!-- ===== НИЖНИЙ БЛОК: 19 виджетов по фильтрам ===== -->
+  <div class="mes-board mes-board-trim" id="board-filter">
+
+    <!-- TRIM FILTERED: CHERY / GWM / CHANGAN -->
+    <!-- CHERY -->
+    <div class="mes-node compact grid-col-1 grid-row-1" id="trim-in-chery-filter" data-section="trim" data-line="chery" data-metric="trim_in">
+      <div class="title"><span class="k">TRIM IN</span><span class="line">CHERY</span></div>
+      <div class="counter" id="c-trim-in-chery-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-2 grid-row-1" id="wip-trim-chery-filter" data-section="trim" data-line="chery" data-metric="wip_trim">
+      <div class="title"><span class="k">WIP TRIM</span><span class="line">CHERY</span></div>
+      <div class="counter" id="c-wip-trim-chery-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-3 grid-row-1" id="trim-out-chery-filter" data-section="trim" data-line="chery" data-metric="trim_out">
+      <div class="title"><span class="k">TRIM OUT</span><span class="line">CHERY</span></div>
+      <div class="counter" id="c-trim-out-chery-filter">0</div>
+    </div>
+
+    <!-- GWM -->
+    <div class="mes-node compact grid-col-1 grid-row-2" id="trim-in-gwm-filter" data-section="trim" data-line="gwm" data-metric="trim_in">
+      <div class="title"><span class="k">TRIM IN</span><span class="line">GWM</span></div>
+      <div class="counter" id="c-trim-in-gwm-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-2 grid-row-2" id="wip-trim-gwm-filter" data-section="trim" data-line="gwm" data-metric="wip_trim">
+      <div class="title"><span class="k">WIP TRIM</span><span class="line">GWM</span></div>
+      <div class="counter" id="c-wip-trim-gwm-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-3 grid-row-2" id="trim-out-gwm-filter" data-section="trim" data-line="gwm" data-metric="trim_out">
+      <div class="title"><span class="k">TRIM OUT</span><span class="line">GWM</span></div>
+      <div class="counter" id="c-trim-out-gwm-filter">0</div>
+    </div>
+
+    <!-- CHANGAN -->
+    <div class="mes-node compact grid-col-1 grid-row-3" id="trim-in-changan-filter" data-section="trim" data-line="changan" data-metric="trim_in">
+      <div class="title"><span class="k">TRIM IN</span><span class="line">CHANGAN</span></div>
+      <div class="counter" id="c-trim-in-changan-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-2 grid-row-3" id="wip-trim-changan-filter" data-section="trim" data-line="changan" data-metric="wip_trim">
+      <div class="title"><span class="k">WIP TRIM</span><span class="line">CHANGAN</span></div>
+      <div class="counter" id="c-wip-trim-changan-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-3 grid-row-3" id="trim-out-changan-filter" data-section="trim" data-line="changan" data-metric="trim_out">
+      <div class="title"><span class="k">TRIM OUT</span><span class="line">CHANGAN</span></div>
+      <div class="counter" id="c-trim-out-changan-filter">0</div>
+    </div>
+
+    <!-- Connectors from TRIM OUT to BQA (filtered) -->
+    <div class="connector connector-top grid-col-4 grid-row-1"></div>
+    <div class="connector connector-mid grid-col-4 grid-row-2"></div>
+    <div class="connector connector-bot grid-col-4 grid-row-3"></div>
+
+    <!-- BQA (filtered) -->
+    <div class="mes-node compact grid-col-5 grid-row-2" id="bqa-filter" data-section="bqa">
+      <div class="title">Buffer QA</div>
+      <div class="subgrid">
+        <div class="mes-chip" data-metric="bqa_in"><div class="small-note">IN</div><div class="counter" id="c-bqa-in-filter">0</div></div>
+        <div class="mes-chip" data-metric="bqa_wip_today"><div class="small-note">Today</div><div class="counter" id="c-bqa-wip-today-filter">0</div></div>
+        <div class="mes-chip" data-metric="bqa_wip_all"><div class="small-note">ALL</div><div class="counter" id="c-bqa-wip-all-filter">0</div></div>
+      </div>
+      <span class="arrow" style="right:-12px;"></span>
+    </div>
+
+    <!-- QA (filtered) -->
+    <div class="mes-node compact grid-col-6 grid-row-2" id="qa-in-filter" data-section="qa" data-metric="qa_in">
+      <div class="title">QA IN</div>
+      <div class="counter" id="c-qa-in-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-7 grid-row-2" id="wip-qa-filter" data-section="qa" data-metric="wip_qa">
+      <div class="title">WIP QA</div>
+      <div class="counter" id="c-wip-qa-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-8 grid-row-2" id="sign-off-filter" data-section="qa" data-metric="sign_off">
+      <div class="title">SIGN OFF</div>
+      <div class="counter" id="c-sign-off-filter">0</div>
+    </div>
+    <div class="grid-col-8 grid-row-1 shift-right-half">
+      <div class="mes-mini">
+        <div class="mini-card" title="Defects Per Unit"><span class="label">DPU</span><span class="value" id="c-qa-dpu-mini-filter">0.00</span></div>
+        <div class="mini-card" title="Straight to SGP"><span class="label">STR</span><span class="value" id="c-qa-str-mini-filter">0%</span></div>
+      </div>
+    </div>
+
+    <!-- VES (filtered, top row) -->
+    <div class="mes-node compact grid-col-5 grid-row-1 shift-right-half" id="ves-in-filter" data-section="ves" data-metric="ves_in">
+      <div class="title">VES IN</div>
+      <div class="counter" id="c-ves-in-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-6 grid-row-1 shift-right-half" id="wip-ves-filter" data-section="ves" data-metric="wip_ves">
+      <div class="title">WIP VES</div>
+      <div class="counter" id="c-wip-ves-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-7 grid-row-1 shift-right-half" id="ves-out-filter" data-section="ves" data-metric="ves_out">
+      <div class="title">VES OUT</div>
+      <div class="counter" id="c-ves-out-filter">0</div>
+    </div>
+
+    <!-- UUD (filtered, bottom row) -->
+    <div class="mes-node compact grid-col-5 grid-row-3 shift-right-half" id="uud-in-filter" data-section="uud" data-metric="uud_in">
+      <div class="title">UUD IN</div>
+      <div class="subgrid">
+        <div class="mes-chip" data-metric="uud_in"><div class="small-note">IN</div><div class="counter" id="c-uud-in-filter">0</div></div>
+        <div class="mes-chip" data-metric="uud_in_wip_today"><div class="small-note">Today</div><div class="counter" id="c-uud-in-wip-today-filter">0</div></div>
+        <div class="mes-chip" data-metric="uud_in_wip_all"><div class="small-note">ALL</div><div class="counter" id="c-uud-in-wip-all-filter">0</div></div>
+      </div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-6 grid-row-3 shift-right-half" id="wip-uud-filter" data-section="uud" data-metric="wip_uud">
+      <div class="title">WIP UUD</div>
+      <div class="counter" id="c-wip-uud-filter">0</div>
+      <span class="arrow"></span>
+    </div>
+    <div class="mes-node compact grid-col-7 grid-row-3 shift-right-half" id="uud-out-filter" data-section="uud" data-metric="uud_out">
+      <div class="title">UUD OUT</div>
+      <div class="subgrid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="mes-chip" data-metric="uud_out"><div class="small-note">OUT</div><div class="counter" id="c-uud-out-filter">0</div></div>
+        <div class="mes-chip" data-metric="uud_out_wip"><div class="small-note">Buffer</div><div class="counter" id="c-uud-out-wip-filter">0</div></div>
+      </div>
+    </div>
+
+  </div> <!-- /#board-filter -->
+
+</div>
+
+<script>
+// static/js/mes_dashboard.js (inline debug-enabled)
+(() => {
+  // ---- Helpers to show status ------------------------------------------------
+  const $status = () => document.getElementById('mes-status');
+  const setStatus = (txt, kind = 'secondary') => {
+    const s = $status();
+    if (!s) return;
+    s.textContent = txt;
+    s.className = `alert alert-${kind} py-1 px-2 mb-2`;
+    s.style.display = '';
+  };
+
+  // ---- Прогресс обновления ---------------------------------------------------
+  let PROGRESS = { total: 0, done: 0 };
+  const beginProgress = (total = 10) => {
+    PROGRESS.total = total;
+    PROGRESS.done = 0;
+    setStatus(`Обновление: 0%`, "info");
+  };
+  const bumpProgress = () => {
+    PROGRESS.done += 1;
+    const pct = Math.min(100, Math.round((PROGRESS.done / Math.max(1, PROGRESS.total)) * 100));
+    setStatus(`Обновление: ${pct}%`, "info");
+  };
+
+  // ---- Конфиг/дефолты ------------------------------------------------------
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  // Helpers to format local datetimes for <input type="datetime-local">
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const toLocalDatetimeValue = (d) => {
+    const y = d.getFullYear();
+    const m = pad2(d.getMonth() + 1);
+    const day = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mm = pad2(d.getMinutes());
+    return `${y}-${m}-${day}T${hh}:${mm}`;
+  };
+  const todayStartLocal = () => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return toLocalDatetimeValue(d);
+  };
+  const todayEndLocal = () => {
+    const d = new Date();
+    d.setHours(23, 59, 0, 0);
+    return toLocalDatetimeValue(d);
+  };
+
+  // Базовый префикс для API: если страница под /users/, то и API под /users
+  const PREFIX = (window.API_BASE || (location.pathname.startsWith('/users/') ? '/users' : ''));
+  const API = (window.API ?? {
+    trim_overview: `${PREFIX}/api/mes/trim/overview`,
+    bqa_overview:  `${PREFIX}/api/mes/bqa/overview`,
+    qa_overview:   `${PREFIX}/api/mes/qa/overview`,
+    ves_overview:  `${PREFIX}/api/mes/ves/overview`,
+    uud_overview:  `${PREFIX}/api/mes/uud/overview`,
+    tracing_brands: `${PREFIX}/api/mes/tracing/brands`,
+    tracing_models: `${PREFIX}/api/mes/tracing/models`,
+    vin_suggest:    `${PREFIX}/api/mes/history/vins`,
+  });
+
+  const TABLE_URL = "{% url 'mes_metric_table_view' %}";
+
+  const BASE_FILTERS = (window.FILTERS ?? {
+    start_date: todayStartLocal(),
+    end_date:   todayEndLocal(),
+    brands:     [],
+    models:     [],
+    vin:        "",
+    line:       "",
+  });
+
+  // 🔧 Sync BASE_FILTERS from querystring so date/shift chips & direct URL work
+  (function syncFromURL(){
+    const qs = new URLSearchParams(location.search);
+    const sd = qs.get('start_date');
+    const ed = qs.get('end_date');
+    if (sd) BASE_FILTERS.start_date = sd;
+    if (ed) BASE_FILTERS.end_date   = ed;
+    const vin = qs.get('vin');           if (vin)  BASE_FILTERS.vin = vin;
+    const line = qs.get('line');         if (line) BASE_FILTERS.line = line;
+    const brands = qs.getAll('brand');   if (brands.length) BASE_FILTERS.brands = brands;
+    const models = qs.getAll('model');   if (models.length) BASE_FILTERS.models = models;
+  })();
+
+  // ---- Даты из UI -----------------------------------------------------------
+  const initDateInputs = () => {
+    const $fromNew = document.getElementById('dt-from');
+    const $toNew   = document.getElementById('dt-to');
+    const $fromOld = document.getElementById('date-from');
+    const $toOld   = document.getElementById('date-to');
+
+    const fromVal = BASE_FILTERS.start_date || todayStartLocal();
+    const toVal   = BASE_FILTERS.end_date   || todayEndLocal();
+
+    if ($fromNew) $fromNew.value = fromVal;
+    if ($toNew)   $toNew.value   = toVal;
+    if ($fromOld) $fromOld.value = fromVal;
+    if ($toOld)   $toOld.value   = toVal;
+  };
+
+  const readDatesFromUI = () => {
+    const vFrom = document.getElementById('dt-from')?.value || document.getElementById('date-from')?.value || '';
+    const vTo   = document.getElementById('dt-to')?.value   || document.getElementById('date-to')?.value   || '';
+    if (vFrom) BASE_FILTERS.start_date = vFrom;
+    if (vTo)   BASE_FILTERS.end_date   = vTo;
+    // normalize
+    if (BASE_FILTERS.start_date && BASE_FILTERS.end_date && BASE_FILTERS.end_date < BASE_FILTERS.start_date) {
+      const tmp = BASE_FILTERS.start_date;
+      BASE_FILTERS.start_date = BASE_FILTERS.end_date;
+      BASE_FILTERS.end_date   = tmp;
+      const $fromNew = document.getElementById('dt-from');
+      const $toNew   = document.getElementById('dt-to');
+      if ($fromNew) $fromNew.value = BASE_FILTERS.start_date;
+      if ($toNew)   $toNew.value   = BASE_FILTERS.end_date;
+      const $fromOld = document.getElementById('date-from');
+      const $toOld   = document.getElementById('date-to');
+      if ($fromOld) $fromOld.value = BASE_FILTERS.start_date;
+      if ($toOld)   $toOld.value   = BASE_FILTERS.end_date;
+    }
+  };
+
+  // ---- Утилиты --------------------------------------------------------------
+  const buildParams = (base = {}, extra = {}) => {
+    const p = new URLSearchParams();
+    const hasTime = (v) => typeof v === 'string' && v.includes('T');
+    const ymd = (v) => (typeof v === 'string' ? v.split('T')[0] : '');
+    const hm  = (v) => (typeof v === 'string' && v.includes('T') ? v.split('T')[1] : '');
+
+    if (base.start_date) p.set('start_date', base.start_date);
+    if (base.end_date)   p.set('end_date',   base.end_date);
+
+    // ✅ Явно пробрасываем время в нескольких популярных вариантах
+    if (hasTime(base.start_date)) {
+      p.set('start_datetime', base.start_date);
+      p.set('from_datetime',  base.start_date);
+      p.set('time_from',      hm(base.start_date));
+      p.set('start_time',     hm(base.start_date));
+      p.set('date_from',      ymd(base.start_date));
+    }
+    if (hasTime(base.end_date)) {
+      p.set('end_datetime', base.end_date);
+      p.set('to_datetime',  base.end_date);
+      p.set('time_to',      hm(base.end_date));
+      p.set('end_time',     hm(base.end_date));
+      p.set('date_to',      ymd(base.end_date));
+    }
+    if (hasTime(base.start_date) || hasTime(base.end_date)) p.set('use_time', '1');
+
+    if (base.vin)        p.set('vin', base.vin);
+    (base.brands || []).forEach(b => p.append('brand', b));
+    (base.models || []).forEach(m => p.append('model', m));
+    if (base.line)       p.set('line', base.line);
+
+    // defaults
+    p.set('include_items', '0');
+
+    // allow override
+    Object.entries(extra || {}).forEach(([k,v])=>{
+      if (v === undefined || v === null || v === '') return;
+      if (Array.isArray(v)) v.forEach(x => p.append(k, x));
+      else p.set(k, v);
+    });
+    return p.toString();
+  };
+
+  const get = async (url, paramsObj, extraParams = {}) => {
+    const qs = buildParams(paramsObj, extraParams);
+    const full = `${url}?${qs}`;
+    const t0 = performance.now();
+    const resp = await fetch(full, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+    const ct = resp.headers.get("content-type") || "";
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} for ${full}`);
+    }
+    if (!ct.includes("application/json")) {
+      const text = await resp.text();
+      throw new Error(`Не JSON ответ (${ct}). Возможно редирект на логин. URL: ${full}`);
+    }
+    const json = await resp.json();
+    console.debug("[MES] GET", full, json);
+    bumpProgress();
+    return json;
+  };
+
+  const pick = (obj, keys, d=0) => {
+    for (const k of keys) {
+      const v = obj?.[k];
+      if (v !== undefined && v !== null) return v;
+    }
+    return d;
+  };
+  const toCount = (v) => {
+    if (v == null) return 0;
+    if (typeof v === "object" && "count" in v) return Number(v.count) || 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const count = toCount;
+
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(value ?? "0");
+  };
+
+  // ---- Мапперы в разметку (верхняя часть — по линии) ------------------------
+  const fillTopTrim = (data) => {
+    const by = data.by_line || {};
+    const o  = data.overall || {};
+    const over = {
+      trim_in:  toCount(pick(o, ["trim_in","TRIM_IN","in"])),
+      wip_trim: toCount(pick(o, ["wip_trim","WIP_TRIM","wip"])),
+      trim_out: toCount(pick(o, ["trim_out","TRIM_OUT","out"])),
+    };
+    const lines = ["gwm", "chery", "changan"];
+    for (const line of lines) {
+      const m = by[line] || {};
+      const v_in  = toCount(pick(m, ["trim_in","TRIM_IN","in"] , over.trim_in));
+      const v_wip = toCount(pick(m, ["wip_trim","WIP_TRIM","wip"], over.wip_trim));
+      const v_out = toCount(pick(m, ["trim_out","TRIM_OUT","out"], over.trim_out));
+      setText(`c-trim-in-${line}`,  v_in);
+      setText(`c-wip-trim-${line}`, v_wip);
+      setText(`c-trim-out-${line}`, v_out);
+    }
+  };
+
+  const fillTopBQA = (data, suffix = "") => {
+    const o = data.overall || {};
+    // поддержка случаев, где ключи могут быть без префикса bqa_
+    const bqaIn       = o.bqa_in       ?? o.in       ?? o.BQA_IN;
+    const bqaWipToday = o.bqa_wip_today?? o.wip_today?? o.BQA_WIP_TODAY;
+    const bqaWipAll   = o.bqa_wip_all  ?? o.wip_all  ?? o.BQA_WIP_ALL;
+    setText(`c-bqa-in${suffix}`,        count(bqaIn));
+    setText(`c-bqa-wip-today${suffix}`, count(bqaWipToday));
+    setText(`c-bqa-wip-all${suffix}`,   count(bqaWipAll));
+  };
+
+  const fillTopQA = (data, suffix = "") => {
+    const o = data.overall || {};
+    const qaIn   = o.qa_in   ?? o.in   ?? o.QA_IN;
+    const wipQa  = o.wip_qa  ?? o.wip  ?? o.WIP_QA;
+    const signOf = o.sign_off?? o.signoff ?? o.SIGN_OFF;
+    setText(`c-qa-in${suffix}`,    count(qaIn));
+    setText(`c-wip-qa${suffix}`,   count(wipQa));
+    setText(`c-sign-off${suffix}`, count(signOf));
+    // mini cards above SIGN OFF (right side)
+    const strBlock = o.str || {};
+    const dpuBlock = o.dpu || {};
+    const strPct = Number(strBlock.percent ?? 0);
+    const dpuVal = Number(dpuBlock.value ?? 0);
+    setText(`c-qa-str-mini${suffix}`, Number.isFinite(strPct) ? `${strPct.toFixed(1)}%` : '0%');
+    setText(`c-qa-dpu-mini${suffix}`, Number.isFinite(dpuVal) ? dpuVal.toFixed(2) : '0.00');
+  };
+
+  const fillVES = (data, suffix = "") => {
+    const o = data.overall || {};
+    const vesIn  = o.ves_in  ?? o.in  ?? o.VES_IN;
+    const wipVes = o.wip_ves ?? o.wip ?? o.WIP_VES;
+    const vesOut = o.ves_out ?? o.out ?? o.VES_OUT;
+    setText(`c-ves-in${suffix}`,  count(vesIn));
+    setText(`c-wip-ves${suffix}`, count(wipVes));
+    setText(`c-ves-out${suffix}`, count(vesOut));
+  };
+
+  const fillUUD = (data, suffix = "") => {
+    const o = data.overall || {};
+    const inWipToday = o.uud_in_wip_today ?? o.in_wip_today ?? o.UUD_IN_WIP_TODAY;
+    const inWipAll   = o.uud_in_wip_all   ?? o.in_wip_all   ?? o.UUD_IN_WIP_ALL;
+    const queue      = o.uud_in           ?? o.queue        ?? o.UUD_IN;
+    const wip        = o.wip_uud          ?? o.wip          ?? o.WIP_UUD;
+    const outCount   = o.uud_out          ?? o.out          ?? o.UUD_OUT;
+    const outWip     = o.uud_out_wip      ?? o.out_wip      ?? o.UUD_OUT_WIP;
+
+    setText(`c-uud-in-wip-today${suffix}`, count(inWipToday));
+    setText(`c-uud-in-wip-all${suffix}`,   count(inWipAll));
+    setText(`c-uud-in${suffix}`,           count(queue));
+    setText(`c-wip-uud${suffix}`,          count(wip));
+    setText(`c-uud-out${suffix}`,          count(outCount));
+    setText(`c-uud-out-wip${suffix}`,      count(outWip));
+  };
+
+  const fillFilterTrim = (data) => {
+    const by = data.by_line || {};
+    const o  = data.overall || {};
+    const over = {
+      trim_in:  toCount(pick(o, ["trim_in","TRIM_IN","in"])),
+      wip_trim: toCount(pick(o, ["wip_trim","WIP_TRIM","wip"])),
+      trim_out: toCount(pick(o, ["trim_out","TRIM_OUT","out"])),
+    };
+    for (const line of ["chery","gwm","changan"]) {
+      const m = by[line] || {};
+      const v_in  = toCount(pick(m, ["trim_in","TRIM_IN","in"], over.trim_in));
+      const v_wip = toCount(pick(m, ["wip_trim","WIP_TRIM","wip"], over.wip_trim));
+      const v_out = toCount(pick(m, ["trim_out","TRIM_OUT","out"], over.trim_out));
+      setText(`c-trim-in-${line}-filter`,  v_in);
+      setText(`c-wip-trim-${line}-filter`, v_wip);
+      setText(`c-trim-out-${line}-filter`, v_out);
+    }
+  };
+
+  // ---- Загрузчики -----------------------------------------------------------
+  // ВЕРХ: показываем всегда суммарную картину по датам (без brand/model/line), чтобы исключить случай фильтров=0
+  const topFilters = () => {
+    const { start_date, end_date } = BASE_FILTERS;
+    return { start_date, end_date };
+  };
+
+  // НИЗ: используем реальные фильтры, которые проброшены с фронта/формы
+  const filteredFilters = () => ({ ...BASE_FILTERS });
+
+  const loadTop = async () => {
+    const f = topFilters();
+    const [trim, bqa, qa, ves, uud] = await Promise.all([
+      get(API.trim_overview, f, { include_items: "1" }),
+      get(API.bqa_overview,  f),
+      get(API.qa_overview,   f),
+      get(API.ves_overview,  f),
+      get(API.uud_overview,  f),
+    ]);
+    fillTopTrim(trim);
+    fillTopBQA(bqa, "");
+    fillTopQA(qa, "");
+    fillVES(ves, "");
+    fillUUD(uud, "");
+  };
+
+  const loadFiltered = async () => {
+    const f = filteredFilters();
+    const [trim, bqa, qa, ves, uud] = await Promise.all([
+      get(API.trim_overview, f, { include_items: "1" }),
+      get(API.bqa_overview,  f),
+      get(API.qa_overview,   f),
+      get(API.ves_overview,  f),
+      get(API.uud_overview,  f),
+    ]);
+    fillFilterTrim(trim);
+    fillTopBQA(bqa, "-filter");
+    fillTopQA(qa, "-filter");
+    fillVES(ves, "-filter");
+    fillUUD(uud, "-filter");
+  };
+  // ---- Списки брендов/моделей и подсказки VIN ------------------------------
+  const simpleFetchJSON = async (url, params={}) => {
+    const qs = new URLSearchParams(params).toString();
+    const full = qs ? `${url}?${qs}` : url;
+    const resp = await fetch(full, { headers: { "X-Requested-With": "XMLHttpRequest" }});
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${full}`);
+    const ct = resp.headers.get('content-type')||'';
+    if (!ct.includes('application/json')) return [];
+    return await resp.json();
+  };
+  const normalizeList = (arr, key='name') => {
+    if (!Array.isArray(arr)) return [];
+    return arr.map(x => typeof x === 'string' ? x : (x?.value || x?.[key] || x?.name || x?.title)).filter(Boolean);
+  };
+
+  // ===== Multiselect Dropdown (checkbox list) =====
+  const getMultiDropValues = (rootId) => {
+    const root = document.getElementById(rootId); if (!root) return [];
+    return Array.from(root.querySelectorAll('input[type="checkbox"]:checked')).map(i=>i.value);
+  };
+  const setMultiDropButtonText = (rootId) => {
+    const root = document.getElementById(rootId); if (!root) return;
+    const btn  = root.querySelector('button.btn');
+    const vals = getMultiDropValues(rootId);
+    const placeholder = btn?.dataset.placeholder || '';
+    if (!btn) return;
+    if (vals.length === 0) btn.textContent = placeholder;
+    else if (vals.length <= 3) btn.textContent = vals.join(', ');
+    else btn.textContent = `${placeholder} (${vals.length})`;
+  };
+  const populateMultiDrop = (rootId, items) => {
+    const root = document.getElementById(rootId); if (!root) return;
+    const menu = root.querySelector('.multidrop-menu');
+    const prev = new Set(getMultiDropValues(rootId));
+    menu.innerHTML = '';
+    const search = document.createElement('input');
+    search.className = 'form-control md-search';
+    search.placeholder = 'Поиск...';
+    menu.appendChild(search);
+    const listWrap = document.createElement('div');
+    menu.appendChild(listWrap);
+    const render = (q='') => {
+      listWrap.innerHTML = '';
+      const qq = q.trim().toLowerCase();
+      items.forEach(v => {
+        if (!v) return;
+        if (qq && !v.toLowerCase().includes(qq)) return;
+        const label = document.createElement('label');
+        label.className = 'form-check d-flex align-items-center gap-2';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.className='form-check-input'; cb.value = v;
+        if (prev.has(v)) cb.checked = true;
+        const span = document.createElement('span'); span.textContent = v;
+        label.appendChild(cb); label.appendChild(span);
+        listWrap.appendChild(label);
+        cb.addEventListener('change', ()=> setMultiDropButtonText(rootId));
+      });
+    };
+    render();
+    search.addEventListener('input', ()=> render(search.value));
+    setMultiDropButtonText(rootId);
+  };
+  const clearMultiDrop = (rootId) => {
+    const root = document.getElementById(rootId); if (!root) return;
+    root.querySelectorAll('input[type="checkbox"]').forEach(i=> i.checked=false);
+    setMultiDropButtonText(rootId);
+  };
+  const initMultiDropToggles = () => {
+    document.querySelectorAll('.multidrop').forEach(md => {
+      const btn = md.querySelector('button.btn');
+      btn?.addEventListener('click', (e)=>{ e.stopPropagation(); md.classList.toggle('open'); });
+    });
+    document.addEventListener('click', ()=>{
+      document.querySelectorAll('.multidrop.open').forEach(md=> md.classList.remove('open'));
+    });
+  };
+
+  const loadFilterLists = async () => {
+    try {
+      const { start_date, end_date } = BASE_FILTERS;
+      const [brandsResp, modelsResp] = await Promise.all([
+        simpleFetchJSON(API.tracing_brands, { start_date, end_date }),
+        simpleFetchJSON(API.tracing_models, { start_date, end_date }),
+      ]);
+      const brands = normalizeList(brandsResp.brands || brandsResp, 'brand');
+      const models = normalizeList(modelsResp.models || modelsResp, 'model');
+      populateMultiDrop('md-brand', brands);
+      populateMultiDrop('md-model', models);
+      initMultiDropToggles();
+      document.getElementById('md-brand')?.addEventListener('change', ()=>{ readFiltersFromUI(); });
+      document.getElementById('md-model')?.addEventListener('change', ()=>{ readFiltersFromUI(); });
+    } catch (e) {
+      console.warn('[MES] loadFilterLists:', e.message);
+    }
+  };
+  const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+  const setupVinSuggest = () => {
+    const $vin = document.getElementById('f-vin');
+    const $dl  = document.getElementById('vin-suggest');
+    if (!$vin || !$dl) return;
+    const doSuggest = debounce(async ()=>{
+      const q = ($vin.value||'').trim();
+      if (!q || q.length < 2) { $dl.innerHTML=''; return; }
+      try{
+        const { start_date, end_date } = BASE_FILTERS;
+        const resp = await simpleFetchJSON(API.vin_suggest, { q, start_date, end_date });
+        const list = Array.isArray(resp) ? resp : (resp.vins || resp.items || []);
+        const vins = normalizeList(list, 'vin').slice(0, 50);
+        $dl.innerHTML = '';
+        vins.forEach(v=>{ const o=document.createElement('option'); o.value=v; $dl.appendChild(o); });
+      }catch(e){ console.warn('[MES] vin suggest:', e.message); }
+    }, 250);
+    $vin.addEventListener('input', doSuggest);
+  };
+  const readFiltersFromUI = () => {
+    const brands = getMultiDropValues('md-brand');
+    const models = getMultiDropValues('md-model');
+    const vin    = (document.getElementById('f-vin')?.value || '').trim();
+    BASE_FILTERS.brands = brands;
+    BASE_FILTERS.models = models;
+    BASE_FILTERS.vin    = vin;
+  };
+
+  // Только верх (обновляется каждые 15 сек)
+  const refreshTop = async () => {
+    try {
+      beginProgress(5); // только top-блок
+      await loadTop();
+      setStatus(`Готово (верх) · ${new Date().toLocaleTimeString()}`, "success");
+    } catch (e) {
+      console.error("[MES] loadTop error:", e);
+      setStatus(`Ошибка загрузки (верх): ${e.message}`, "danger");
+    }
+  };
+
+  // Низ (только при фильтрах)
+  const refreshFiltered = async () => {
+    try {
+      beginProgress(5); // только bottom-блок
+      await loadFiltered();
+      setStatus(`Готово (фильтры) · ${new Date().toLocaleTimeString()}`, "success");
+    } catch (e) {
+      console.error("[MES] loadFiltered error:", e);
+      setStatus(`Ошибка загрузки (фильтры): ${e.message}`, "danger");
+    }
+  };
+
+  // ---- Open table in a new tab ---------------------------------------------
+  const openTable = (section, metric, useFiltered, line) => {
+    const base = useFiltered ? filteredFilters() : topFilters();
+    const extra = { section, metric };
+    if ((section || "").toLowerCase() === "trim" && line) extra.line = line;
+    const url = TABLE_URL + "?" + buildParams(base, extra);
+    window.open(url, "_blank");
+  };
+
+  const wireWidgetClicks = () => {
+    // Whole cards: use data-section + data-metric (+ data-line for TRIM)
+    document.querySelectorAll(".mes-node[data-section][data-metric]").forEach(el => {
+      el.classList.add("clickable");
+      el.setAttribute("role", "button");
+      el.setAttribute("tabindex", "0");
+      el.title = "Открыть таблицу";
+      el.addEventListener("click", () => {
+        const section = el.dataset.section || "";
+        const metric  = el.dataset.metric  || "";
+        const line    = el.dataset.line    || "";
+        const useFiltered = !!el.closest("#board-filter");
+        openTable(section, metric, useFiltered, line);
+      });
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); }
+      });
+    });
+
+    // Chips inside cards: have their own data-metric (BQA/UUD)
+    document.querySelectorAll(".mes-node .mes-chip[data-metric]").forEach(ch => {
+      ch.style.cursor = "pointer";
+      ch.title = "Открыть таблицу";
+      ch.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const card = ch.closest(".mes-node");
+        const section = card?.dataset.section || "";
+        const metric  = ch.dataset.metric || "";
+        const line    = card?.dataset.line || "";
+        const useFiltered = !!ch.closest("#board-filter");
+        openTable(section, metric, useFiltered, line);
+      });
+    });
+  };
+
+// ---- Bootstrap ------------------------------------------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("[MES] dashboard script loaded");
+
+  // Инициализируем даты в полях
+  initDateInputs();
+
+  // Кнопки управления периодом (только верх обновляем авто)
+  document.getElementById('date-apply')?.addEventListener('click', ()=>{
+    readDatesFromUI();
+    refreshFiltered(); // фильтры → обновляем низ
+  });
+  document.getElementById('date-today')?.addEventListener('click', ()=>{
+    const fromV = todayStartLocal();
+    const toV   = todayEndLocal();
+    const $from = document.getElementById('date-from');
+    const $to   = document.getElementById('date-to');
+    if ($from) $from.value = fromV;
+    if ($to)   $to.value   = toV;
+    readDatesFromUI();
+    refreshFiltered();
+  });
+
+  ['date-from','date-to','dt-from','dt-to'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('change', ()=>{
+      readDatesFromUI();
+      refreshFiltered();
+    });
+    document.getElementById(id)?.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){ readDatesFromUI(); refreshFiltered(); }
+    });
+  });
+
+  // Быстрые пресеты диапазонов
+  const setDateInputs = (fromStr, toStr) => {
+    const $from = document.getElementById('date-from');
+    const $to   = document.getElementById('date-to');
+    if ($from) $from.value = fromStr;
+    if ($to)   $to.value   = toStr;
+  };
+  const startOfDay = (d) => { const x=new Date(d); x.setHours(0,0,0,0); return x; };
+  const endOfDay   = (d) => { const x=new Date(d); x.setHours(23,59,0,0); return x; };
+  const applyPreset = (range) => {
+    const now = new Date();
+    let from = new Date(now), to = new Date(now);
+    switch(range){
+      case 'today': from = startOfDay(now); to = endOfDay(now); break;
+      case 'yesterday': {
+        const y = new Date(now.getFullYear(), now.getMonth(), now.getDate()-1);
+        from = startOfDay(y); to = endOfDay(y); break;
+      }
+      case '24h': from = new Date(now.getTime() - 24*60*60*1000); to = now; break;
+      case 'week': {
+        const dow = (now.getDay()+6)%7;
+        from = startOfDay(new Date(now.getFullYear(), now.getMonth(), now.getDate()-dow));
+        to   = now; break;
+      }
+      case 'month': from = startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)); to = now; break;
+    }
+    const pad = (n)=>String(n).padStart(2,'0');
+    const toLocal = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    setDateInputs(toLocal(from), toLocal(to));
+    readDatesFromUI();
+    refreshFiltered();
+  };
+  document.querySelectorAll('.preset-chips .chip').forEach(btn=>{
+    btn.addEventListener('click', ()=> applyPreset(btn.dataset.range));
+  });
+
+  // Списки брендов/моделей и VIN-подсказки
+  loadFilterLists();
+  setupVinSuggest();
+
+  // Кнопки фильтров
+  document.getElementById('f-apply')?.addEventListener('click', ()=>{
+    readFiltersFromUI();
+    refreshFiltered();
+  });
+  document.getElementById('f-clear')?.addEventListener('click', ()=>{
+    clearMultiDrop('md-brand');
+    clearMultiDrop('md-model');
+    const $v=document.getElementById('f-vin');
+    if($v) $v.value='';
+    readFiltersFromUI();
+    refreshFiltered();
+  });
+
+  // Автообновление по Enter в VIN
+  document.getElementById('f-vin')?.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ readFiltersFromUI(); refreshFiltered(); }
+  });
+
+  wireWidgetClicks();
+
+  // первый запуск: только верх
+  refreshTop();
+
+  function isLiveRange() {
+    // Prefer new datetime-local inputs; fallback to old ids; final fallback to BASE_FILTERS
+    const getVal = (id) => document.getElementById(id)?.value || '';
+    const pick = (...ids) => ids.map(getVal).find(v => v);
+
+    const fromStr = pick('dt-from','date-from') || BASE_FILTERS.start_date || '';
+    const toStr   = pick('dt-to','date-to')     || BASE_FILTERS.end_date   || '';
+
+    const from = fromStr ? new Date(fromStr) : null;
+    const to   = toStr   ? new Date(toStr)   : null;
+    if (!from || !to || isNaN(from) || isNaN(to)) return false;
+
+    const now = new Date();
+    return from <= now && now <= to;
+  }
+
+  // автообновление каждые 15 сек: только верх
+  let refreshTimer = null;
+  const REFRESH_MS = window.MES_REFRESH_MS || 15000;
+
+  function startAutoRefresh() {
+    if (refreshTimer) return;
+    if (!isLiveRange()) {
+      console.log("[MES] выбран не текущий диапазон → автообновление отключено");
+      return;
+    }
+    refreshTimer = setInterval(() => {
+      if (!document.hidden && isLiveRange()) {
+        refreshTop();
+      }
+    }, REFRESH_MS);
+  }
+
+  function stopAutoRefresh() {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+  }
+
+  // 🔥 Автозапуск + реакция на вкладку и смену дат
+  refreshTop();        // один раз всегда
+  startAutoRefresh();  // авто только если выбран текущий диапазон
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopAutoRefresh();
+    } else {
+      refreshTop();
+      stopAutoRefresh();
+      startAutoRefresh(); // пересоздаём по условию
+    }
+  });
+
+  ['date-from','date-to','dt-from','dt-to'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('change', ()=>{
+      readDatesFromUI();
+      refreshFiltered();
+      stopAutoRefresh();
+      startAutoRefresh();
+    });
+  });
+});
+})();
+
+
+</script>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const fromEl = $('#dt-from');
+  const toEl   = $('#dt-to');
+
+  const params = new URLSearchParams(location.search);
+
+  function toLocalInput(dt){
+    const z = n => String(n).padStart(2,'0');
+    return dt.getFullYear()+'-'+z(dt.getMonth()+1)+'-'+z(dt.getDate())+'T'+z(dt.getHours())+':'+z(dt.getMinutes());
+  }
+  function getDayStartEnd(d){
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+    const e = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 0);
+    return [s, e];
+  }
+  function setRange(start, end, mark=null){
+    fromEl.value = toLocalInput(start);
+    toEl.value   = toLocalInput(end);
+    highlight(mark);
+    applyRange();
+  }
+  function highlight(mark){
+    document.querySelectorAll('.chip-btn').forEach(b=>b.classList.remove('active'));
+    if(!mark) return;
+    document.querySelectorAll(`.chip-btn[data-preset="${mark}"], .chip-btn[data-shift="${mark}"]`)
+      .forEach(b=>b.classList.add('active'));
+  }
+
+  // Инициализация значений из URL или по умолчанию
+  (function init(){
+    const startURL = params.get('start_date');
+    const endURL   = params.get('end_date');
+    if (startURL && endURL){
+      fromEl.value = startURL;
+      toEl.value   = endURL;
+    } else {
+      const [s,e] = getDayStartEnd(new Date());
+      fromEl.value = toLocalInput(s);
+      toEl.value   = toLocalInput(e);
+    }
+  })();
+
+  // Мгновенное применение (с небольшой задержкой, чтобы не дёргать лишний раз)
+  let t;
+  function applyRange(){
+    clearTimeout(t);
+    t = setTimeout(()=>{
+      const sp = new URLSearchParams(location.search);
+      sp.set('start_date', fromEl.value);
+      sp.set('end_date',   toEl.value);
+      sp.delete('shift'); // не фиксируем смену, если руками меняем время
+      location.search = sp.toString(); // если нужен AJAX — замени на свой fetch()
+      if (typeof window !== 'undefined' && typeof window.refresh === 'function') {
+        try { window.refresh(); } catch(_){}
+      }
+    }, 200);
+  }
+
+  fromEl.addEventListener('change', ()=>{ highlight(null); applyRange(); });
+  toEl  .addEventListener('change', ()=>{ highlight(null); applyRange(); });
+
+  // Пресеты
+  document.querySelectorAll('.chip-btn[data-preset]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const mark = btn.dataset.preset;
+      const now = new Date();
+      let s,e;
+      if(mark==='today'){ [s,e]=getDayStartEnd(now); }
+      else if(mark==='yesterday'){
+        const y = new Date(now); y.setDate(y.getDate()-1); [s,e]=getDayStartEnd(y);
+      }
+      else if(mark==='last24'){ e = new Date(); s = new Date(); s.setHours(s.getHours()-24); }
+      else if(mark==='thisWeek'){
+        const day = now.getDay(); const diff = (day===0?6:day-1);
+        s = new Date(now.getFullYear(), now.getMonth(), now.getDate()-diff, 0,0,0);
+        e = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23,59,0);
+      }
+      else if(mark==='thisMonth'){
+        s = new Date(now.getFullYear(), now.getMonth(), 1, 0,0,0);
+        e = new Date(now.getFullYear(), now.getMonth()+1, 0, 23,59,0);
+      }
+      setRange(s,e,mark);
+    });
+  });
+
+  // Смены — считаем от даты, указанной в поле "С"
+  function baseDate(){
+    const d = new Date(fromEl.value || new Date());
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  document.querySelectorAll('.chip-btn[data-shift]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const mark = btn.dataset.shift;
+      const base = baseDate();
+      let s,e;
+      if (mark==='s1'){
+        s = new Date(base); s.setHours(7,30,0,0);
+        e = new Date(base); e.setHours(16,30,0,0);
+      } else {
+        s = new Date(base); s.setHours(16,30,0,0);
+        e = new Date(base); e.setDate(e.getDate()+1); e.setHours(1,30,0,0);
+      }
+      const sp = new URLSearchParams(location.search);
+      sp.set('shift', mark);
+      sp.set('start_date', toLocalInput(s));
+      sp.set('end_date',   toLocalInput(e));
+      highlight(mark);
+      location.search = sp.toString(); // или AJAX
+      if (typeof window !== 'undefined' && typeof window.refresh === 'function') {
+        try { window.refresh(); } catch(_){}
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

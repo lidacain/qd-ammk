@@ -1,0 +1,434 @@
+{% extends "users/base.html" %}
+{% block title %}Участок устранения дефектов (DKD){% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Участок устранения дефектов (DKD)</h2>
+
+    {% if messages %}
+        <div class="alert alert-success">
+            {% for message in messages %}
+                {{ message }}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <!-- 1️⃣ VIN-поиск -->
+        <div class="mb-3 position-relative">
+            <label class="form-label">Номер VIN</label>
+            <div style="position: relative;">
+                <input type="text" id="vin_search" name="vin_number" class="form-control" placeholder="Введите VIN...">
+                <span id="clear_vin_search" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 18px; color: #dc3545;">❌</span>
+            </div>
+            <button type="button" id="start_qr_scan" class="btn btn-primary mt-2">📷 Сканировать QR</button>
+            <div id="qr-reader" style="width: 300px; display: none;"></div>
+            <button type="button" id="stop_qr_scan" class="btn btn-danger mt-2" style="display: none;">✖ Остановить сканирование</button>
+            <ul id="vin_list" class="list-group mt-2" style="display: none; position: absolute; width: 100%; z-index: 1000;"></ul>
+        </div>
+
+        <!-- 2️⃣ Информация из БД -->
+        <div id="info_block" class="p-3 border rounded mb-3" style="display: none;">
+            <h5>Данные по VIN:</h5>
+            <p><strong>VIN:</strong> <span id="trace_vin"></span></p>
+            <p><strong>Номер ДВС:</strong> <span id="trace_engine"></span></p>
+            <p><strong>Модель:</strong> <span id="trace_model"></span></p>
+            <p><strong>Цвет:</strong> <span id="body_color_value"></span></p>
+
+            <hr>
+            <h5>Оффлайн-ремонты:</h5>
+            <div id="offline_defects_block"><p><em>Загрузка...</em></p></div>
+
+            <hr>
+            <h5>Информация с предыдущего поста УУД:</h5>
+            <div id="uud_previous_block"><p><em>Загрузка...</em></p></div>
+        </div>
+
+        <!-- 3️⃣ Описание ремонта -->
+        <div class="mb-3">
+            <label class="form-label">Описание выполненного ремонта</label>
+            <textarea name="repair_description" class="form-control" maxlength="1000" rows="4" placeholder="Опишите как был устранён дефект..." required></textarea>
+        </div>
+
+        <!-- 4️⃣ Фото устранения -->
+        <div class="mb-3">
+            <label class="form-label">Фото устранённых дефектов</label>
+            <input type="file" name="repair_photos" id="repair_photos" class="form-control" accept="image/*" multiple>
+            <button type="button" class="btn btn-primary mt-2" id="open_repair_camera">📷 Сделать фото</button>
+            <div id="repair_photo_preview" class="d-flex flex-wrap gap-2 mt-2"></div>
+        </div>
+
+        <!-- Кнопка отправки -->
+        <button type="button" class="btn btn-success w-100" onclick="confirmSave()">✅ Завершить и сохранить</button>
+    </form>
+</div>
+
+<script>
+    function confirmSave() {
+        if (confirm("Вы уверены, что хотите сохранить эту запись?")) {
+            document.querySelector('form').submit();
+        }
+    }
+</script>
+
+<!-- Подключаем QR и обработку -->
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        setupVinSearch(); // реализация будет ниже
+        setupQrScanner(); // реализация будет ниже
+    });
+
+    document.getElementById("open_repair_camera").addEventListener("click", function () {
+        openCamera("repair_photos", "repair_photo_preview"); // реализация как в образце
+    });
+
+
+
+
+
+function setupVinSearch() {
+    const vinInput = document.getElementById("vin_search");
+    const vinList = document.getElementById("vin_list");
+    const clearBtn = document.getElementById("clear_vin_search");
+
+    vinInput.addEventListener("input", function () {
+        const query = vinInput.value.trim().toUpperCase();
+        if (!query) {
+            vinList.style.display = "none";
+            return;
+        }
+
+        fetch(`/assembly/api/vin-lookup/?q=${query}`)
+            .then(res => res.json())
+            .then(data => {
+                vinList.innerHTML = "";
+                if (!data.results || data.results.length === 0) {
+                    vinList.style.display = "none";
+                    return;
+                }
+
+                data.results.forEach(item => {
+                    const li = document.createElement("li");
+                    li.classList.add("list-group-item", "list-group-item-action");
+                    li.textContent = item.vin;
+                    li.addEventListener("click", function () {
+                        vinInput.value = item.vin;
+                        vinList.style.display = "none";
+                        loadVinData(item);  // 👈 основной вызов
+                    });
+                    vinList.appendChild(li);
+                });
+
+                vinList.style.display = "block";
+            })
+            .catch(err => {
+                console.error("❌ Ошибка VIN-поиска:", err);
+                vinList.style.display = "none";
+            });
+    });
+
+    clearBtn.addEventListener("click", function () {
+        vinInput.value = "";
+        vinList.style.display = "none";
+        document.getElementById("info_block").style.display = "none";
+    });
+
+    document.addEventListener("click", function (event) {
+        if (!vinInput.contains(event.target) && !vinList.contains(event.target)) {
+            vinList.style.display = "none";
+        }
+    });
+}
+
+/* 📥 Загрузка VIN-данных из API */
+function loadVinData(item) {
+    const infoBlock = document.getElementById("info_block");
+    const vinSpan = document.getElementById("trace_vin");
+    const engineSpan = document.getElementById("trace_engine");
+    const modelSpan = document.getElementById("trace_model");
+    const colorSpan = document.getElementById("body_color_value");
+    const offlineBlock = document.getElementById("offline_defects_block");
+    const uudBlock = document.getElementById("uud_previous_block");
+
+    infoBlock.style.display = "block";
+
+    // 🟩 Отображаем трейсинг
+    vinSpan.textContent = item.vin || "-";
+    engineSpan.textContent = item.engine_number || "-";
+    modelSpan.textContent = item.model || "-";
+    colorSpan.textContent = item.body_color || "-";
+
+    // 🟨 Оффлайн-ремонты
+    offlineBlock.innerHTML = "<p><em>Загрузка...</em></p>";
+    fetch(`/assembly/api/get-offline-defects/?vin=${item.vin}`)
+        .then(res => res.json())
+        .then(data => {
+            offlineBlock.innerHTML = "";
+            const defects = data.offline_defects;
+            if (!defects || defects.length === 0) {
+                offlineBlock.innerHTML = "<p><em>Нет оффлайн-ремонтов.</em></p>";
+                return;
+            }
+
+            defects.forEach(defect => {
+                const div = document.createElement("div");
+                div.className = "border rounded p-2 mb-3";
+
+                div.innerHTML = `
+                    <p><strong>Дата:</strong> ${defect.date}</p>
+                    <p><strong>Зона:</strong> ${defect.zone}</p>
+                    <p><strong>Пост:</strong> ${defect.post}</p>
+                    <p><strong>Деталь:</strong> ${defect.detail}</p>
+                    <p><strong>Дефект:</strong> ${defect.defect}</p>
+                    <p><strong>Грейд:</strong> ${defect.grade}</p>
+                    <p><strong>Кол-во:</strong> ${defect.quantity}</p>
+                    <p><strong>Ответственный:</strong> ${defect.responsible}</p>
+                    <p><strong>Описание ремонта:</strong> ${defect.repair_type_description || "-"}</p>
+                `;
+
+                if (defect.photos && defect.photos.length > 0) {
+                    const photoRow = document.createElement("div");
+                    photoRow.className = "d-flex flex-wrap gap-2 mt-2";
+                    defect.photos.forEach(url => {
+                        const img = document.createElement("img");
+                        img.src = url;
+                        img.classList.add("img-thumbnail");
+                        img.style.maxWidth = "120px";
+                        img.style.objectFit = "cover";
+                        img.style.borderRadius = "4px";
+                        photoRow.appendChild(img);
+                    });
+                    div.appendChild(photoRow);
+                }
+
+                offlineBlock.appendChild(div);
+            });
+        })
+        .catch(err => {
+            console.error("❌ Ошибка загрузки оффлайн-ремонтов:", err);
+            offlineBlock.innerHTML = "<p><em>Ошибка загрузки.</em></p>";
+        });
+
+    // 🟥 Данные с УУД
+    uudBlock.innerHTML = "<p><em>Загрузка...</em></p>";
+    fetch(`/assembly/api/uud-zone-data/?vin=${item.vin}`)
+        .then(res => res.json())
+        .then(data => {
+            const uud = data.uud_data;
+            if (!uud) {
+                uudBlock.innerHTML = "<p><em>Нет записей с УУД.</em></p>";
+                return;
+            }
+
+            uudBlock.innerHTML = `
+                <p><strong>Описание:</strong> ${uud.repair_description || "-"}</p>
+                <p><strong>Ответственный:</strong> ${uud.controller || "-"}</p>
+                <p><strong>Дата:</strong> ${uud.date_added || "-"}</p>
+            `;
+
+            if (uud.repair_photos && uud.repair_photos.length > 0) {
+                const photoRow = document.createElement("div");
+                photoRow.className = "d-flex flex-wrap gap-2 mt-2";
+                uud.repair_photos.forEach(url => {
+                    const img = document.createElement("img");
+                    img.src = url;
+                    img.classList.add("img-thumbnail");
+                    img.style.maxWidth = "120px";
+                    img.style.objectFit = "cover";
+                    img.style.borderRadius = "4px";
+                    photoRow.appendChild(img);
+                });
+                uudBlock.appendChild(photoRow);
+            }
+
+            if (uud.check_status === "not_passed") {
+                uudBlock.innerHTML += `
+                    <div class="border rounded mt-3 p-2 bg-light">
+                        <h6 class="text-danger">❌ Машина не прошла проверку</h6>
+                        <p><strong>Комментарий:</strong> ${uud.check_comment || "-"}</p>
+                        <p><strong>Проверил:</strong> ${uud.checked_by || "-"}</p>
+                        <p><strong>Дата:</strong> ${uud.checked_at || "-"}</p>
+                    </div>
+                `;
+
+                if (uud.check_photos && uud.check_photos.length > 0) {
+                    const checkRow = document.createElement("div");
+                    checkRow.className = "d-flex flex-wrap gap-2 mt-2";
+                    uud.check_photos.forEach(url => {
+                        const img = document.createElement("img");
+                        img.src = url;
+                        img.classList.add("img-thumbnail");
+                        img.style.maxWidth = "100px";
+                        checkRow.appendChild(img);
+                    });
+                    uudBlock.appendChild(checkRow);
+                }
+            }
+
+        })
+        .catch(err => {
+            console.error("❌ Ошибка загрузки УУД:", err);
+            uudBlock.innerHTML = "<p><em>Ошибка загрузки.</em></p>";
+        });
+}
+
+
+document.addEventListener("DOMContentLoaded", function () {
+    const photoInput = document.getElementById("repair_photos");
+    const previewContainer = document.getElementById("repair_photo_preview");
+
+    photoInput.addEventListener("change", function () {
+        previewContainer.innerHTML = "";
+
+        const files = Array.from(photoInput.files);
+        const dataTransfer = new DataTransfer();
+
+        files.forEach((file, index) => {
+            const container = document.createElement("div");
+            container.classList.add("d-flex", "flex-column", "align-items-center", "m-2");
+
+            const img = document.createElement("img");
+            img.src = URL.createObjectURL(file);
+            img.classList.add("img-thumbnail");
+            img.style.maxWidth = "200px";
+            img.style.objectFit = "cover";
+            img.style.borderRadius = "5px";
+
+            const delBtn = document.createElement("button");
+            delBtn.classList.add("btn", "btn-danger", "btn-sm", "mt-2");
+            delBtn.textContent = "Удалить";
+            delBtn.addEventListener("click", () => {
+                container.remove();
+                const newDT = new DataTransfer();
+                for (let i = 0; i < photoInput.files.length; i++) {
+                    if (photoInput.files[i].name !== file.name) {
+                        newDT.items.add(photoInput.files[i]);
+                    }
+                }
+                photoInput.files = newDT.files;
+            });
+
+            container.appendChild(img);
+            container.appendChild(delBtn);
+            previewContainer.appendChild(container);
+
+            dataTransfer.items.add(file);
+        });
+
+        photoInput.files = dataTransfer.files;
+    });
+
+    document.getElementById("open_repair_camera").addEventListener("click", function () {
+        openCamera("repair_photos", "repair_photo_preview");
+    });
+});
+
+/* 📷 Камера */
+function openCamera(inputId, previewId) {
+    // ⛔ Если модалка уже открыта — не создаем ещё одну
+    if (document.getElementById("camera_modal")) {
+        console.warn("📷 Камера уже открыта.");
+        return;
+    }
+
+    const modal = document.createElement("div");
+    modal.id = "camera_modal";
+    modal.style = `
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        z-index: 9999;
+    `;
+    modal.innerHTML = `
+        <video id="camera_feed" autoplay playsinline style="width: 90%; max-width: 400px;"></video>
+        <button id="capture_button" class="btn btn-success mt-2">📸 Сфотографировать</button>
+        <button id="close_camera" class="btn btn-danger mt-2">❌ Закрыть</button>
+    `;
+    document.body.appendChild(modal);
+
+    const video = modal.querySelector("#camera_feed");
+    const captureBtn = modal.querySelector("#capture_button");
+    const closeBtn = modal.querySelector("#close_camera");
+    const input = document.getElementById(inputId);
+    const preview = document.getElementById(previewId);
+    let activeStream = null;
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
+            activeStream = stream;
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            console.error("Ошибка доступа к камере:", err);
+            alert("Ошибка доступа к камере: " + err.message);
+            closeCamera();
+        });
+
+    captureBtn.addEventListener("click", () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(blob => {
+            const file = new File([blob], `photo_${Date.now()}.jpg`, { type: "image/jpeg" });
+
+            const dataTransfer = new DataTransfer();
+            for (let existing of input.files) {
+                dataTransfer.items.add(existing);
+            }
+            dataTransfer.items.add(file);
+            input.files = dataTransfer.files;
+
+            const container = document.createElement("div");
+            container.classList.add("d-flex", "flex-column", "align-items-center", "m-2");
+
+            const img = document.createElement("img");
+            img.src = URL.createObjectURL(file);
+            img.classList.add("img-thumbnail");
+            img.style.maxWidth = "200px";
+            img.style.objectFit = "cover";
+            img.style.borderRadius = "5px";
+
+            const delBtn = document.createElement("button");
+            delBtn.classList.add("btn", "btn-danger", "btn-sm", "mt-2");
+            delBtn.textContent = "Удалить";
+            delBtn.addEventListener("click", () => {
+                container.remove();
+                const newDT = new DataTransfer();
+                for (let f of input.files) {
+                    if (f.name !== file.name) newDT.items.add(f);
+                }
+                input.files = newDT.files;
+            });
+
+            container.appendChild(img);
+            container.appendChild(delBtn);
+            preview.appendChild(container);
+
+            closeCamera();
+        }, "image/jpeg");
+    });
+
+    function closeCamera() {
+        if (activeStream) {
+            activeStream.getTracks().forEach(track => track.stop());
+        }
+        if (modal) modal.remove();
+    }
+
+    closeBtn.addEventListener("click", closeCamera);
+    modal.addEventListener("click", e => {
+        if (e.target === modal) closeCamera();
+    });
+}
+
+</script>
+
+{% endblock %}

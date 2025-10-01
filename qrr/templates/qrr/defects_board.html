@@ -1,0 +1,1360 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% load custom_filters %}
+{% block title %}QRR — Дефекты{% endblock %}
+{% block content %}
+<style>
+  .qrr-wrap{max-width:1400px;margin:8px auto 24px;}
+  .pillbar .nav-link{border-radius:999px;}
+  .subbar .nav-link{border-radius:8px;}
+  .card-slim{box-shadow:0 8px 22px rgba(0,0,0,.06);}
+  .col-left{min-width:260px}
+  .col-mid{min-width:260px}
+  .col-right{min-width:260px}
+  /* Force 3 equal columns on wide screens */
+  .qrr-grid > .col-left,
+  .qrr-grid > .col-mid,
+  .qrr-grid > .col-right{
+    flex: 0 0 33.333%;
+    max-width: 33.333%;
+    word-break: normal;         /* don't split words arbitrarily */
+    overflow-wrap: break-word;  /* wrap at spaces; long tokens wrap if necessary */
+    white-space: normal;
+  }
+  .qrr-grid{align-items:stretch}
+  .divider-v{align-self:stretch}
+  .kv{display:flex;gap:8px;margin:2px 0}
+  .kv .k{color:#6b7280;min-width:140px}
+  .badge-sticky{position:sticky;top:8px}
+  @media (max-width: 991.98px){
+    .qrr-grid{display:block}
+    .col-left,.col-mid,.col-right{min-width:unset}
+    .qrr-grid > .col-left,
+    .qrr-grid > .col-mid,
+    .qrr-grid > .col-right{flex: 0 0 100%; max-width:100%}
+    .divider-v{display:none}
+    .card-body{padding:12px}
+  }
+  .thumbs img{height:68px;width:auto;border-radius:6px;cursor:pointer}
+  .divider-v{width:1px;background:linear-gradient(180deg,#e9ecef,transparent)}
+  .photo-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width: 220px;
+    height: 120px;
+    border-radius: 16px;
+    border: 1px solid #adb5bd; /* gray border similar to btn-outline-secondary */
+    background: #f8f9fa;       /* light gray background */
+    color: #495057;            /* bootstrap text color */
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .photo-btn:hover{
+    background:#e9ecef;
+    color:#212529;
+    text-decoration: none;
+  }
+  @media (max-width: 991.98px){
+    .photo-btn{ width: 100%; height: 90px; }
+  }
+  .resp-chip{display:inline-block;background:#f1f3f5;border:1px solid #e9ecef;border-radius:999px;padding:.1rem .5rem;margin:.1rem .15rem}
+</style>
+
+<div class="qrr-wrap">
+
+  <div class="mb-3">
+    <a href="{% url 'master_dashboard' %}" class="btn btn-light">
+      ← Назад
+    </a>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0">QRR — Работа с дефектами</h4>
+    <form class="row g-2 align-items-end" method="get">
+      <input type="hidden" name="grade" value="{{ grade_filter }}">
+      <input type="hidden" name="status" value="{{ status_filter }}">
+      <input type="hidden" name="page_size" value="{{ page_size }}">
+
+      <div class="col-auto">
+        <label class="form-label mb-1">Поиск</label>
+        <input class="form-control" style="min-width:280px" type="search" name="q"
+               placeholder="Поиск (VIN/юнит/комментарий)" value="{{ query }}">
+      </div>
+
+      <div class="col-auto">
+        <label class="form-label mb-1">Бренд</label>
+        <div class="d-flex gap-3 flex-wrap" style="max-width:520px">
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="brand" value="gwm"
+                   {% if 'gwm' in brands_selected %}checked{% endif %}> GWM (Haval, Tank)
+          </label>
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="brand" value="chery"
+                   {% if 'chery' in brands_selected %}checked{% endif %}> Chery
+          </label>
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="brand" value="changan"
+                   {% if 'changan' in brands_selected %}checked{% endif %}> Changan
+          </label>
+        </div>
+      </div>
+
+      <div class="col-auto">
+        <label class="form-label mb-1">Пост</label>
+        <select class="form-select" name="post" multiple style="min-width:260px; max-width: 360px">
+          {% for p in available_posts %}
+            <option value="{{ p }}" {% if posts_selected and p in posts_selected %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Можно выбрать несколько (Ctrl/⌘ + клик).</div>
+      </div>
+
+      <div class="col-auto">
+        <label class="form-label mb-1">С даты</label>
+        <input type="date" class="form-control" name="start_date"
+               value="{% if start_date %}{{ start_date|date:'Y-m-d' }}{% endif %}">
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-1">По дату</label>
+        <input type="date" class="form-control" name="end_date"
+               value="{% if end_date %}{{ end_date|date:'Y-m-d' }}{% endif %}">
+      </div>
+
+      <div class="col-auto">
+        <button class="btn btn-dark">Применить</button>
+        <a class="btn btn-outline-secondary" href="?grade={{ grade_filter|urlencode }}&status={{ status_filter|urlencode }}&page_size={{ page_size }}">Сбросить</a>
+      </div>
+      {% if start_date or end_date %}
+        <div class="col-12">
+          <div class="small text-muted mt-1">
+            Период:
+            {% if start_date %}с {{ start_date|date:'d.m.Y' }}{% endif %}
+            {% if start_date and end_date %} — {% endif %}
+            {% if end_date %}по {{ end_date|date:'d.m.Y' }}{% endif %}
+          </div>
+        </div>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- Grade tabs -->
+  <ul class="nav nav-pills pillbar gap-2 mb-3" id="gradeTabs" role="tablist">
+    {% for g in grades %}
+      <li class="nav-item" role="presentation">
+        {% if g == "V1+" %}
+          {% with gid="v1plus" %}
+            <button class="nav-link {% if g == grade_filter %}active{% endif %}" data-grade-tab="1" data-bs-toggle="tab" data-bs-target="#tab-{{ gid }}" type="button" role="tab">
+              {{ g }}
+              <span class="badge text-bg-light ms-1">{{ counts_grade_total|get_item:g|default:0 }} ({{ counts_grade_unassigned|get_item:g|default:0 }})</span>
+            </button>
+          {% endwith %}
+        {% elif g == "V1" %}
+          {% with gid="v1" %}
+            <button class="nav-link {% if g == grade_filter %}active{% endif %}" data-grade-tab="1" data-bs-toggle="tab" data-bs-target="#tab-{{ gid }}" type="button" role="tab">
+              {{ g }}
+              <span class="badge text-bg-light ms-1">{{ counts_grade_total|get_item:g|default:0 }} ({{ counts_grade_unassigned|get_item:g|default:0 }})</span>
+            </button>
+          {% endwith %}
+        {% elif g == "V2" %}
+          {% with gid="v2" %}
+            <button class="nav-link {% if g == grade_filter %}active{% endif %}" data-grade-tab="1" data-bs-toggle="tab" data-bs-target="#tab-{{ gid }}" type="button" role="tab">
+              {{ g }}
+              <span class="badge text-bg-light ms-1">{{ counts_grade_total|get_item:g|default:0 }} ({{ counts_grade_unassigned|get_item:g|default:0 }})</span>
+            </button>
+          {% endwith %}
+        {% else %}
+          {% with gid="v3" %}
+            <button class="nav-link {% if g == grade_filter %}active{% endif %}" data-grade-tab="1" data-bs-toggle="tab" data-bs-target="#tab-{{ gid }}" type="button" role="tab">
+              {{ g }}
+              <span class="badge text-bg-light ms-1">{{ counts_grade_total|get_item:g|default:0 }} ({{ counts_grade_unassigned|get_item:g|default:0 }})</span>
+            </button>
+          {% endwith %}
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+
+  <div class="tab-content">
+    {% for g in grades %}
+      {% with items=grouped|get_item:g %}
+        {% if g == "V1+" %}
+          {% with gid="v1plus" %}
+            <div class="tab-pane fade {% if g == grade_filter %}show active{% endif %}" id="tab-{{ gid }}" role="tabpanel">
+              <!-- Sub tabs -->
+              <ul class="nav nav-tabs subbar mb-3" id="subTabs-{{ gid }}" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <a class="nav-link {% if status_filter == 'unassigned' %}active{% endif %}" href="?grade={{ g|urlencode }}&status=unassigned&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}">
+                    Не проверено
+                    <span class="badge text-bg-light ms-1">{{ counts_grade_unassigned|get_item:g|default:0 }}</span>
+                  </a>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <a class="nav-link {% if status_filter == 'assigned' %}active{% endif %}" href="?grade={{ g|urlencode }}&status=assigned&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}">
+                    Проверено
+                    <span class="badge text-bg-light ms-1">{{ counts_grade_assigned|get_item:g|default:0 }}</span>
+                  </a>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <!-- Unassigned -->
+                <div class="tab-pane fade {% if status_filter == 'unassigned' %}show active{% endif %}" id="{{ gid }}-unassigned" role="tabpanel">
+                  {% if not items %}
+                    <div class="alert alert-light border">Нет дефектов.</div>
+                  {% else %}
+                    {% for d in items %}
+                      {% if not d.qrr_responsibles and not d.qrr_responsibles_ids %}
+                          <div class="card card-slim mb-3">
+                            <div class="card-body">
+                              <div class="d-lg-flex qrr-grid gap-3">
+                                <div class="col-left flex-fill">
+                                  <div class="mb-1 fw-semibold">{{ d.vin }}</div>
+                                  {% if d.brand or d.model %}
+                                    <div class="mb-1 text-muted">
+                                      {{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}
+                                    </div>
+                                    {% if d.config_code or d.color_1c %}
+                                      <div class="mb-1 text-muted small">
+                                        {{ d.config_code|default:"—" }}{% if d.color_1c %} •  {{ d.color_1c }}{% endif %}
+                                      </div>
+                                    {% endif %}
+                                  {% else %}
+                                    {% with trace=vin_trace_map|get_item:d.vin %}
+                                      {% if trace %}
+                                        <div class="mb-1 text-muted">
+                                          {{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}
+                                        </div>
+                                        <div class="mb-1 text-muted small">
+                                          {{ trace.config_code|default:"—" }}{% if trace.color_1c %} •  {{ trace.color_1c }}{% endif %}
+                                        </div>
+                                      {% endif %}
+                                    {% endwith %}
+                                  {% endif %}
+                                  <div class="mb-1">{{ d.post }} • Линия {{ d.line|default:"—" }} • {{ d.zone }}</div>
+                                  <div class="mb-1">{{ d.unit }}</div>
+                                  <div class="mb-1">{{ d.defect_description }}</div>
+                                  {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+                                  <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.controller_raw|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+                                  {% if d.photos %}
+                                    <a class="photo-btn"
+                                       href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                                       target="_blank" rel="noopener noreferrer">
+                                      Фото ({{ d.photos|length }})
+                                    </a>
+                                  {% else %}
+                                    <span class="text-muted">Фото нет</span>
+                                  {% endif %}
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-right flex-fill">
+                                  <div class="mb-2"><span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id }}</span></div>
+{% if d.qrr_set_by or d.qrr_responsible_fio %}
+  <div class="mb-2 text-muted small">
+    Назначил: {{ d.qrr_responsible_fio|default:d.qrr_set_by }}{% if d.qrr_set_date_str or d.qrr_set_time_str %} • {{ d.qrr_set_date_str }} {{ d.qrr_set_time_str }}{% endif %}
+  </div>
+{% endif %}
+                                <div class="mb-2">
+                                  <label class="form-label">Ответственные (можно несколько)</label>
+                                  <div class="border rounded p-2" style="max-height: 170px; overflow:auto" id="respbox-{{ d.defect_id|slugify }}">
+                                    {% for r in qrr_responsibles_all %}
+                                      <label class="d-flex align-items-center gap-2 mb-1">
+                                        <input type="checkbox" class="form-check-input" data-resp value="{{ r.id }}" id="respopt-{{ d.defect_id|slugify }}-{{ r.id }}" {% if d.qrr_responsibles_ids and r.id in d.qrr_responsibles_ids %}checked{% endif %}>
+                                        <span class="small">{{ r.name }}</span>
+                                      </label>
+                                    {% endfor %}
+                                  </div>
+                                  {% if d.qrr_responsibles %}
+                                    <div class="mt-2">
+                                      {% for nm in d.qrr_responsibles %}
+                                        <span class="badge text-bg-light me-1">{{ nm }}</span>
+                                      {% endfor %}
+                                    </div>
+                                  {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                  <label class="form-label">Обоснование (опционально)</label>
+                                  <input class="form-control" id="resp-just-{{ d.defect_id|slugify }}" placeholder="Опционально" value="{{ d.extra.qrr_responsible_justification|default:'' }}">
+                                </div>
+
+                                <button class="btn btn-primary w-100 mb-3" onclick="saveDefect('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">Сохранить</button>
+                                  <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chgbox-{{ d.defect_id|slugify }}" onchange="toggleGradeField('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">
+                                    <label class="form-check-label" for="chgbox-{{ d.defect_id|slugify }}">Менять грейд</label>
+                                  </div>
+                                  <div id="grade-pane-{{ d.defect_id|slugify }}" style="display:none">
+                                    <div class="input-group mb-2">
+                                      <span class="input-group-text">Grade</span>
+                                      <select class="form-select" id="grade-{{ d.defect_id|slugify }}" data-current-grade="{{ d.grade|default:'' }}">
+                                        {% for gg in grades_all %}
+                                          <option value="{{ gg }}" {% if d.grade == gg %}selected{% endif %}>{{ gg }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </div>
+                                  <div class="input-group mb-3">
+                                    <span class="input-group-text">Обоснование</span>
+                                    <input class="form-control" id="grade-just-{{ d.defect_id|slugify }}" placeholder="Обязательно при смене">
+                                  </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                </div>
+                <!-- Assigned -->
+                <div class="tab-pane fade {% if status_filter == 'assigned' %}show active{% endif %}" id="{{ gid }}-assigned" role="tabpanel">
+                  {% if not items %}
+                    <div class="alert alert-light border">Нет дефектов.</div>
+                  {% else %}
+                    {% for d in items %}
+                      {% if d.qrr_responsibles or d.qrr_responsibles_ids %}
+                          <div class="card card-slim mb-3">
+                            <div class="card-body">
+                              <div class="d-lg-flex qrr-grid gap-3">
+                                <div class="col-left flex-fill">
+                                  <div class="mb-1 fw-semibold">{{ d.vin }}</div>
+                                  {% if d.brand or d.model %}
+                                    <div class="mb-1 text-muted">
+                                      {{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}
+                                    </div>
+                                    {% if d.config_code or d.color_1c %}
+                                      <div class="mb-1 text-muted small">
+                                        {{ d.config_code|default:"—" }}{% if d.color_1c %} •  {{ d.color_1c }}{% endif %}
+                                      </div>
+                                    {% endif %}
+                                  {% else %}
+                                    {% with trace=vin_trace_map|get_item:d.vin %}
+                                      {% if trace %}
+                                        <div class="mb-1 text-muted">
+                                          {{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}
+                                        </div>
+                                        <div class="mb-1 text-muted small">
+                                          {{ trace.config_code|default:"—" }}{% if trace.color_1c %} •  {{ trace.color_1c }}{% endif %}
+                                        </div>
+                                      {% endif %}
+                                    {% endwith %}
+                                  {% endif %}
+                                  <div class="mb-1">{{ d.post }} • Линия {{ d.line|default:"—" }} • {{ d.zone }}</div>
+                                  <div class="mb-1">{{ d.unit }}</div>
+                                  <div class="mb-1">{{ d.defect_description }}</div>
+                                  {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+                                  <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.controller_raw|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+                                  {% if d.photos %}
+                                    <a class="photo-btn"
+                                       href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                                       target="_blank" rel="noopener noreferrer">
+                                      Фото ({{ d.photos|length }})
+                                    </a>
+                                  {% else %}
+                                    <span class="text-muted">Фото нет</span>
+                                  {% endif %}
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-right flex-fill">
+                                  <div class="mb-2"><span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id }}</span></div>
+{% if d.qrr_set_by or d.qrr_responsible_fio %}
+  <div class="mb-2 text-muted small">
+    Назначил: {{ d.qrr_responsible_fio|default:d.qrr_set_by }}{% if d.qrr_set_date_str or d.qrr_set_time_str %} • {{ d.qrr_set_date_str }} {{ d.qrr_set_time_str }}{% endif %}
+  </div>
+{% endif %}
+                                <div class="mb-2">
+                                  <label class="form-label">Ответственные (можно несколько)</label>
+                                  <div class="border rounded p-2" style="max-height: 170px; overflow:auto" id="respbox-{{ d.defect_id|slugify }}">
+                                    {% for r in qrr_responsibles_all %}
+                                      <label class="d-flex align-items-center gap-2 mb-1">
+                                        <input type="checkbox" class="form-check-input" data-resp value="{{ r.id }}" id="respopt-{{ d.defect_id|slugify }}-{{ r.id }}" {% if d.qrr_responsibles_ids and r.id in d.qrr_responsibles_ids %}checked{% endif %}>
+                                        <span class="small">{{ r.name }}</span>
+                                      </label>
+                                    {% endfor %}
+                                  </div>
+                                  {% if d.qrr_responsibles %}
+                                    <div class="mt-2">
+                                      {% for nm in d.qrr_responsibles %}
+                                        <span class="badge text-bg-light me-1">{{ nm }}</span>
+                                      {% endfor %}
+                                    </div>
+                                  {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                  <label class="form-label">Обоснование (опционально)</label>
+                                  <input class="form-control" id="resp-just-{{ d.defect_id|slugify }}" placeholder="Опционально" value="{{ d.extra.qrr_responsible_justification|default:'' }}">
+                                </div>
+
+                                <button class="btn btn-primary w-100 mb-3" onclick="saveDefect('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">Сохранить</button>
+                                  <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chgbox-{{ d.defect_id|slugify }}" onchange="toggleGradeField('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">
+                                    <label class="form-check-label" for="chgbox-{{ d.defect_id|slugify }}">Менять грейд</label>
+                                  </div>
+                                  <div id="grade-pane-{{ d.defect_id|slugify }}" style="display:none">
+                                    <div class="input-group mb-2">
+                                      <span class="input-group-text">Grade</span>
+                                      <select class="form-select" id="grade-{{ d.defect_id|slugify }}" data-current-grade="{{ d.grade|default:'' }}">
+                                        {% for gg in grades_all %}
+                                          <option value="{{ gg }}" {% if d.grade == gg %}selected{% endif %}>{{ gg }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </div>
+                                  <div class="input-group mb-3">
+                                    <span class="input-group-text">Обоснование</span>
+                                    <input class="form-control" id="grade-just-{{ d.defect_id|slugify }}" placeholder="Обязательно при смене">
+                                  </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endwith %}
+        {% elif g == "V1" %}
+          {% with gid="v1" %}
+            <div class="tab-pane fade {% if g == grade_filter %}show active{% endif %}" id="tab-{{ gid }}" role="tabpanel">
+              <!-- Sub tabs -->
+              <ul class="nav nav-tabs subbar mb-3" id="subTabs-{{ gid }}" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <a class="nav-link {% if status_filter == 'unassigned' %}active{% endif %}" href="?grade={{ g|urlencode }}&status=unassigned&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}">
+                    Не проверено
+                    <span class="badge text-bg-light ms-1">{{ counts_grade_unassigned|get_item:g|default:0 }}</span>
+                  </a>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <a class="nav-link {% if status_filter == 'assigned' %}active{% endif %}" href="?grade={{ g|urlencode }}&status=assigned&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}">
+                    Проверено
+                    <span class="badge text-bg-light ms-1">{{ counts_grade_assigned|get_item:g|default:0 }}</span>
+                  </a>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <!-- Unassigned -->
+                <div class="tab-pane fade {% if status_filter == 'unassigned' %}show active{% endif %}" id="{{ gid }}-unassigned" role="tabpanel">
+                  {% if not items %}
+                    <div class="alert alert-light border">Нет дефектов.</div>
+                  {% else %}
+                    {% for d in items %}
+                      {% if not d.qrr_responsibles and not d.qrr_responsibles_ids %}
+                          <div class="card card-slim mb-3">
+                            <div class="card-body">
+                              <div class="d-lg-flex qrr-grid gap-3">
+                                <div class="col-left flex-fill">
+                                  <div class="mb-1 fw-semibold">{{ d.vin }}</div>
+                                  {% if d.brand or d.model %}
+                                    <div class="mb-1 text-muted">
+                                      {{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}
+                                    </div>
+                                    {% if d.config_code or d.color_1c %}
+                                      <div class="mb-1 text-muted small">
+                                        {{ d.config_code|default:"—" }}{% if d.color_1c %} •  {{ d.color_1c }}{% endif %}
+                                      </div>
+                                    {% endif %}
+                                  {% else %}
+                                    {% with trace=vin_trace_map|get_item:d.vin %}
+                                      {% if trace %}
+                                        <div class="mb-1 text-muted">
+                                          {{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}
+                                        </div>
+                                        <div class="mb-1 text-muted small">
+                                          {{ trace.config_code|default:"—" }}{% if trace.color_1c %} •  {{ trace.color_1c }}{% endif %}
+                                        </div>
+                                      {% endif %}
+                                    {% endwith %}
+                                  {% endif %}
+                                  <div class="mb-1">{{ d.post }} • Линия {{ d.line|default:"—" }} • {{ d.zone }}</div>
+                                  <div class="mb-1">{{ d.unit }}</div>
+                                  <div class="mb-1">{{ d.defect_description }}</div>
+                                  {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+                                  <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.controller_raw|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+                                  {% if d.photos %}
+                                    <a class="photo-btn"
+                                       href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                                       target="_blank" rel="noopener noreferrer">
+                                      Фото ({{ d.photos|length }})
+                                    </a>
+                                  {% else %}
+                                    <span class="text-muted">Фото нет</span>
+                                  {% endif %}
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-right flex-fill">
+                                  <div class="mb-2"><span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id }}</span></div>
+{% if d.qrr_set_by or d.qrr_responsible_fio %}
+  <div class="mb-2 text-muted small">
+    Назначил: {{ d.qrr_responsible_fio|default:d.qrr_set_by }}{% if d.qrr_set_date_str or d.qrr_set_time_str %} • {{ d.qrr_set_date_str }} {{ d.qrr_set_time_str }}{% endif %}
+  </div>
+{% endif %}
+                                  <div class="mb-2">
+                                    <label class="form-label">Ответственные (можно несколько)</label>
+                                    <div class="border rounded p-2" style="max-height: 170px; overflow:auto" id="respbox-{{ d.defect_id|slugify }}">
+                                      {% for r in qrr_responsibles_all %}
+                                        <label class="d-flex align-items-center gap-2 mb-1">
+                                          <input type="checkbox" class="form-check-input" data-resp value="{{ r.id }}" id="respopt-{{ d.defect_id|slugify }}-{{ r.id }}" {% if d.qrr_responsibles_ids and r.id in d.qrr_responsibles_ids %}checked{% endif %}>
+                                          <span class="small">{{ r.name }}</span>
+                                        </label>
+                                      {% endfor %}
+                                    </div>
+                                    {% if d.qrr_responsibles %}
+                                      <div class="mt-2">
+                                        {% for nm in d.qrr_responsibles %}
+                                          <span class="badge text-bg-light me-1">{{ nm }}</span>
+                                        {% endfor %}
+                                      </div>
+                                    {% endif %}
+                                  </div>
+
+                                  <div class="mb-3">
+                                    <label class="form-label">Обоснование (опционально)</label>
+                                    <input class="form-control" id="resp-just-{{ d.defect_id|slugify }}" placeholder="Опционально" value="{{ d.extra.qrr_responsible_justification|default:'' }}">
+                                  </div>
+
+                                  <button class="btn btn-primary w-100 mb-3" onclick="saveDefect('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">Сохранить</button>
+                                  <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chgbox-{{ d.defect_id|slugify }}" onchange="toggleGradeField('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">
+                                    <label class="form-check-label" for="chgbox-{{ d.defect_id|slugify }}">Менять грейд</label>
+                                  </div>
+                                  <div id="grade-pane-{{ d.defect_id|slugify }}" style="display:none">
+                                    <div class="input-group mb-2">
+                                      <span class="input-group-text">Grade</span>
+                                      <select class="form-select" id="grade-{{ d.defect_id|slugify }}" data-current-grade="{{ d.grade|default:'' }}">
+                                        {% for gg in grades_all %}
+                                          <option value="{{ gg }}" {% if d.grade == gg %}selected{% endif %}>{{ gg }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </div>
+                                  <div class="input-group mb-3">
+                                    <span class="input-group-text">Обоснование</span>
+                                    <input class="form-control" id="grade-just-{{ d.defect_id|slugify }}" placeholder="Обязательно при смене">
+                                  </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                </div>
+                <!-- Assigned -->
+                <div class="tab-pane fade {% if status_filter == 'assigned' %}show active{% endif %}" id="{{ gid }}-assigned" role="tabpanel">
+                  {% if not items %}
+                    <div class="alert alert-light border">Нет дефектов.</div>
+                  {% else %}
+                    {% for d in items %}
+                      {% if d.qrr_responsibles or d.qrr_responsibles_ids %}
+                          <div class="card card-slim mb-3">
+                            <div class="card-body">
+                              <div class="d-lg-flex qrr-grid gap-3">
+                                <div class="col-left flex-fill">
+                                  <div class="mb-1 fw-semibold">{{ d.vin }}</div>
+                                  {% if d.brand or d.model %}
+                                    <div class="mb-1 text-muted">
+                                      {{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}
+                                    </div>
+                                    {% if d.config_code or d.color_1c %}
+                                      <div class="mb-1 text-muted small">
+                                        {{ d.config_code|default:"—" }}{% if d.color_1c %} •  {{ d.color_1c }}{% endif %}
+                                      </div>
+                                    {% endif %}
+                                  {% else %}
+                                    {% with trace=vin_trace_map|get_item:d.vin %}
+                                      {% if trace %}
+                                        <div class="mb-1 text-muted">
+                                          {{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}
+                                        </div>
+                                        <div class="mb-1 text-muted small">
+                                          {{ trace.config_code|default:"—" }}{% if trace.color_1c %} • {{ trace.color_1c }}{% endif %}
+                                        </div>
+                                      {% endif %}
+                                    {% endwith %}
+                                  {% endif %}
+                                  <div class="mb-1">{{ d.post }} • Линия {{ d.line|default:"—" }} • {{ d.zone }}</div>
+                                  <div class="mb-1">{{ d.unit }}</div>
+                                  <div class="mb-1">{{ d.defect_description }}</div>
+                                  {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+                                  <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.controller_raw|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+                                  {% if d.photos %}
+                                    <a class="photo-btn"
+                                       href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                                       target="_blank" rel="noopener noreferrer">
+                                      Фото ({{ d.photos|length }})
+                                    </a>
+                                  {% else %}
+                                    <span class="text-muted">Фото нет</span>
+                                  {% endif %}
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-right flex-fill">
+                                  <div class="mb-2"><span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id }}</span></div>
+{% if d.qrr_set_by or d.qrr_responsible_fio %}
+  <div class="mb-2 text-muted small">
+    Назначил: {{ d.qrr_responsible_fio|default:d.qrr_set_by }}{% if d.qrr_set_date_str or d.qrr_set_time_str %} • {{ d.qrr_set_date_str }} {{ d.qrr_set_time_str }}{% endif %}
+  </div>
+{% endif %}
+                                  <div class="mb-2">
+                                    <label class="form-label">Ответственные (можно несколько)</label>
+                                    <div class="border rounded p-2" style="max-height: 170px; overflow:auto" id="respbox-{{ d.defect_id|slugify }}">
+                                      {% for r in qrr_responsibles_all %}
+                                        <label class="d-flex align-items-center gap-2 mb-1">
+                                          <input type="checkbox" class="form-check-input" data-resp value="{{ r.id }}" id="respopt-{{ d.defect_id|slugify }}-{{ r.id }}" {% if d.qrr_responsibles_ids and r.id in d.qrr_responsibles_ids %}checked{% endif %}>
+                                          <span class="small">{{ r.name }}</span>
+                                        </label>
+                                      {% endfor %}
+                                    </div>
+                                    {% if d.qrr_responsibles %}
+                                      <div class="mt-2">
+                                        {% for nm in d.qrr_responsibles %}
+                                          <span class="badge text-bg-light me-1">{{ nm }}</span>
+                                        {% endfor %}
+                                      </div>
+                                    {% endif %}
+                                  </div>
+
+                                  <div class="mb-3">
+                                    <label class="form-label">Обоснование (опционально)</label>
+                                    <input class="form-control" id="resp-just-{{ d.defect_id|slugify }}" placeholder="Опционально" value="{{ d.extra.qrr_responsible_justification|default:'' }}">
+                                  </div>
+
+                                  <button class="btn btn-primary w-100 mb-3" onclick="saveDefect('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">Сохранить</button>
+
+                                  <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chgbox-{{ d.defect_id|slugify }}" onchange="toggleGradeField('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">
+                                    <label class="form-check-label" for="chgbox-{{ d.defect_id|slugify }}">Менять грейд</label>
+                                  </div>
+                                  <div id="grade-pane-{{ d.defect_id|slugify }}" style="display:none">
+                                    <div class="input-group mb-2">
+                                      <span class="input-group-text">Grade</span>
+                                      <select class="form-select" id="grade-{{ d.defect_id|slugify }}" data-current-grade="{{ d.grade|default:'' }}">
+                                        {% for gg in grades_all %}
+                                          <option value="{{ gg }}" {% if d.grade == gg %}selected{% endif %}>{{ gg }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </div>
+                                    <div class="input-group mb-3">
+                                      <span class="input-group-text">Обоснование</span>
+                                      <input class="form-control" id="grade-just-{{ d.defect_id|slugify }}" placeholder="Обязательно при смене">
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endwith %}
+        {% elif g == "V2" %}
+          {% with gid="v2" %}
+            <div class="tab-pane fade {% if g == grade_filter %}show active{% endif %}" id="tab-{{ gid }}" role="tabpanel">
+              <!-- Sub tabs -->
+              <ul class="nav nav-tabs subbar mb-3" id="subTabs-{{ gid }}" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <a class="nav-link {% if status_filter == 'unassigned' %}active{% endif %}" href="?grade={{ g|urlencode }}&status=unassigned&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}">
+                    Не проверено
+                    <span class="badge text-bg-light ms-1">{{ counts_grade_unassigned|get_item:g|default:0 }}</span>
+                  </a>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <a class="nav-link {% if status_filter == 'assigned' %}active{% endif %}" href="?grade={{ g|urlencode }}&status=assigned&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}">
+                    Проверено
+                    <span class="badge text-bg-light ms-1">{{ counts_grade_assigned|get_item:g|default:0 }}</span>
+                  </a>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <!-- Unassigned -->
+                <div class="tab-pane fade {% if status_filter == 'unassigned' %}show active{% endif %}" id="{{ gid }}-unassigned" role="tabpanel">
+                  {% if not items %}
+                    <div class="alert alert-light border">Нет дефектов.</div>
+                  {% else %}
+                    {% for d in items %}
+                      {% if not d.qrr_responsibles and not d.qrr_responsibles_ids %}
+                          <div class="card card-slim mb-3">
+                            <div class="card-body">
+                              <div class="d-lg-flex qrr-grid gap-3">
+                                <div class="col-left flex-fill">
+                                  <div class="mb-1 fw-semibold">{{ d.vin }}</div>
+                                  {% if d.brand or d.model %}
+                                    <div class="mb-1 text-muted">{{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}</div>
+                                  {% else %}
+                                    {% with trace=vin_trace_map|get_item:d.vin %}
+                                      {% if trace %}
+                                        <div class="mb-1 text-muted">{{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}</div>
+                                      {% endif %}
+                                    {% endwith %}
+                                  {% endif %}
+                                  <div class="mb-1">{{ d.post }} • {{ d.zone }}</div>
+                                  <div class="mb-1">{{ d.unit }}</div>
+                                  <div class="mb-1">{{ d.defect_description }}</div>
+                                  {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+                                  <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.controller_raw|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+                                  {% if d.photos %}
+                                    <a class="photo-btn"
+                                       href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                                       target="_blank" rel="noopener noreferrer">
+                                      Фото ({{ d.photos|length }})
+                                    </a>
+                                  {% else %}
+                                    <span class="text-muted">Фото нет</span>
+                                  {% endif %}
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-right flex-fill">
+                                  <div class="mb-2"><span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id }}</span></div>
+                                    {% if d.qrr_set_by or d.qrr_responsible_fio %}
+                                      <div class="mb-2 text-muted small">
+                                        Назначил: {{ d.qrr_responsible_fio|default:d.qrr_set_by }}{% if d.qrr_set_date_str or d.qrr_set_time_str %} • {{ d.qrr_set_date_str }} {{ d.qrr_set_time_str }}{% endif %}
+                                      </div>
+                                    {% endif %}
+                                  <div class="mb-2">
+                                    <label class="form-label">Ответственные (можно несколько)</label>
+                                    <div class="border rounded p-2" style="max-height: 170px; overflow:auto" id="respbox-{{ d.defect_id|slugify }}">
+                                      {% for r in qrr_responsibles_all %}
+                                        <label class="d-flex align-items-center gap-2 mb-1">
+                                          <input type="checkbox" class="form-check-input" data-resp value="{{ r.id }}" id="respopt-{{ d.defect_id|slugify }}-{{ r.id }}" {% if d.qrr_responsibles_ids and r.id in d.qrr_responsibles_ids %}checked{% endif %}>
+                                          <span class="small">{{ r.name }}</span>
+                                        </label>
+                                      {% endfor %}
+                                    </div>
+                                    {% if d.qrr_responsibles %}
+                                      <div class="mt-2">
+                                        {% for nm in d.qrr_responsibles %}
+                                          <span class="badge text-bg-light me-1">{{ nm }}</span>
+                                        {% endfor %}
+                                      </div>
+                                    {% endif %}
+                                  </div>
+
+                                  <div class="mb-3">
+                                    <label class="form-label">Обоснование (опционально)</label>
+                                    <input class="form-control" id="resp-just-{{ d.defect_id|slugify }}" placeholder="Опционально" value="{{ d.extra.qrr_responsible_justification|default:'' }}">
+                                  </div>
+
+                                  <button class="btn btn-primary w-100 mb-3" onclick="saveDefect('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">Сохранить</button>
+                                  <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chgbox-{{ d.defect_id|slugify }}" onchange="toggleGradeField('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">
+                                    <label class="form-check-label" for="chgbox-{{ d.defect_id|slugify }}">Менять грейд</label>
+                                  </div>
+                                  <div id="grade-pane-{{ d.defect_id|slugify }}" style="display:none">
+                                    <div class="input-group mb-2">
+                                      <span class="input-group-text">Grade</span>
+                                      <select class="form-select" id="grade-{{ d.defect_id|slugify }}" data-current-grade="{{ d.grade|default:'' }}">
+                                        {% for gg in grades_all %}
+                                          <option value="{{ gg }}" {% if d.grade == gg %}selected{% endif %}>{{ gg }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </div>
+                                    <div class="input-group mb-3">
+                                      <span class="input-group-text">Обоснование</span>
+                                      <input class="form-control" id="grade-just-{{ d.defect_id|slugify }}" placeholder="Обязательно при смене">
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                </div>
+                <!-- Assigned -->
+                <div class="tab-pane fade {% if status_filter == 'assigned' %}show active{% endif %}" id="{{ gid }}-assigned" role="tabpanel">
+                  {% if not items %}
+                    <div class="alert alert-light border">Нет дефектов.</div>
+                  {% else %}
+                    {% for d in items %}
+                      {% if d.qrr_responsibles or d.qrr_responsibles_ids %}
+                          <div class="card card-slim mb-3">
+                            <div class="card-body">
+                              <div class="d-lg-flex qrr-grid gap-3">
+                                <div class="col-left flex-fill">
+                                  <div class="mb-1 fw-semibold">{{ d.vin }}</div>
+                                  {% if d.brand or d.model %}
+                                    <div class="mb-1 text-muted">{{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}</div>
+                                  {% else %}
+                                    {% with trace=vin_trace_map|get_item:d.vin %}
+                                      {% if trace %}
+                                        <div class="mb-1 text-muted">{{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}</div>
+                                      {% endif %}
+                                    {% endwith %}
+                                  {% endif %}
+                                  <div class="mb-1">{{ d.post }} • {{ d.zone }}</div>
+                                  <div class="mb-1">{{ d.unit }}</div>
+                                  <div class="mb-1">{{ d.defect_description }}</div>
+                                  {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+                                  <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.controller_raw|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+                                  {% if d.photos %}
+                                    <a class="photo-btn"
+                                       href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                                       target="_blank" rel="noopener noreferrer">
+                                      Фото ({{ d.photos|length }})
+                                    </a>
+                                  {% else %}
+                                    <span class="text-muted">Фото нет</span>
+                                  {% endif %}
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-right flex-fill">
+                                  <div class="mb-2"><span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id }}</span></div>
+                                    {% if d.qrr_set_by or d.qrr_responsible_fio %}
+                                      <div class="mb-2 text-muted small">
+                                        Назначил: {{ d.qrr_responsible_fio|default:d.qrr_set_by }}{% if d.qrr_set_date_str or d.qrr_set_time_str %} • {{ d.qrr_set_date_str }} {{ d.qrr_set_time_str }}{% endif %}
+                                      </div>
+                                    {% endif %}
+                                  <div class="mb-2">
+                                    <label class="form-label">Ответственные (можно несколько)</label>
+                                    <input type="search" class="form-control mb-2" placeholder="Фильтр" oninput="filterResp('{{ d.defect_id|slugify }}', this.value)">
+                                    <div class="border rounded p-2" style="max-height: 170px; overflow:auto" id="respbox-{{ d.defect_id|slugify }}">
+                                      {% for r in qrr_responsibles_all %}
+                                        <label class="d-flex align-items-center gap-2 mb-1">
+                                          <input type="checkbox" class="form-check-input" data-resp value="{{ r.id }}" id="respopt-{{ d.defect_id|slugify }}-{{ r.id }}" {% if d.qrr_responsibles_ids and r.id in d.qrr_responsibles_ids %}checked{% endif %}>
+                                          <span class="small">{{ r.name }}</span>
+                                        </label>
+                                      {% endfor %}
+                                    </div>
+                                    {% if d.qrr_responsibles %}
+                                      <div class="mt-2">
+                                        {% for nm in d.qrr_responsibles %}
+                                          <span class="badge text-bg-light me-1">{{ nm }}</span>
+                                        {% endfor %}
+                                      </div>
+                                    {% endif %}
+                                  </div>
+
+                                  <div class="mb-3">
+                                    <label class="form-label">Обоснование (опционально)</label>
+                                    <input class="form-control" id="resp-just-{{ d.defect_id|slugify }}" placeholder="Опционально" value="{{ d.extra.qrr_responsible_justification|default:'' }}">
+                                  </div>
+
+                                  <button class="btn btn-primary w-100 mb-3" onclick="saveDefect('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">Сохранить</button>
+                                  <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chgbox-{{ d.defect_id|slugify }}" onchange="toggleGradeField('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">
+                                    <label class="form-check-label" for="chgbox-{{ d.defect_id|slugify }}">Менять грейд</label>
+                                  </div>
+                                  <div id="grade-pane-{{ d.defect_id|slugify }}" style="display:none">
+                                    <div class="input-group mb-2">
+                                      <span class="input-group-text">Grade</span>
+                                      <select class="form-select" id="grade-{{ d.defect_id|slugify }}" data-current-grade="{{ d.grade|default:'' }}">
+                                        {% for gg in grades_all %}
+                                          <option value="{{ gg }}" {% if d.grade == gg %}selected{% endif %}>{{ gg }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </div>
+                                  <div class="input-group mb-3">
+                                    <span class="input-group-text">Обоснование</span>
+                                    <input class="form-control" id="grade-just-{{ d.defect_id|slugify }}" placeholder="Обязательно при смене">
+                                  </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endwith %}
+        {% else %}
+          {% with gid="v3" %}
+            <div class="tab-pane fade {% if g == grade_filter %}show active{% endif %}" id="tab-{{ gid }}" role="tabpanel">
+              <!-- Sub tabs -->
+              <ul class="nav nav-tabs subbar mb-3" id="subTabs-{{ gid }}" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <a class="nav-link {% if status_filter == 'unassigned' %}active{% endif %}" href="?grade={{ g|urlencode }}&status=unassigned&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}">
+                    Не проверено
+                    <span class="badge text-bg-light ms-1">{{ counts_grade_unassigned|get_item:g|default:0 }}</span>
+                  </a>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <a class="nav-link {% if status_filter == 'assigned' %}active{% endif %}" href="?grade={{ g|urlencode }}&status=assigned&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}">
+                    Проверено
+                    <span class="badge text-bg-light ms-1">{{ counts_grade_assigned|get_item:g|default:0 }}</span>
+                  </a>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <!-- Unassigned -->
+                <div class="tab-pane fade {% if status_filter == 'unassigned' %}show active{% endif %}" id="{{ gid }}-unassigned" role="tabpanel">
+                  {% if not items %}
+                    <div class="alert alert-light border">Нет дефектов.</div>
+                  {% else %}
+                    {% for d in items %}
+                      {% if not d.qrr_responsibles and not d.qrr_responsibles_ids %}
+                          <div class="card card-slim mb-3">
+                            <div class="card-body">
+                              <div class="d-lg-flex qrr-grid gap-3">
+                                <div class="col-left flex-fill">
+                                  <div class="mb-1 fw-semibold">{{ d.vin }}</div>
+                                  {% if d.brand or d.model %}
+                                    <div class="mb-1 text-muted">{{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}</div>
+                                  {% else %}
+                                    {% with trace=vin_trace_map|get_item:d.vin %}
+                                      {% if trace %}
+                                        <div class="mb-1 text-muted">{{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}</div>
+                                      {% endif %}
+                                    {% endwith %}
+                                  {% endif %}
+                                  <div class="mb-1">{{ d.post }} • Линия {{ d.line|default:"—" }} • {{ d.zone }}</div>
+                                  <div class="mb-1">{{ d.unit }}</div>
+                                  <div class="mb-1">{{ d.defect_description }}</div>
+                                  {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+                                  <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.controller_raw|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+                                  {% if d.photos %}
+                                    <a class="photo-btn"
+                                       href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                                       target="_blank" rel="noopener noreferrer">
+                                      Фото ({{ d.photos|length }})
+                                    </a>
+                                  {% else %}
+                                    <span class="text-muted">Фото нет</span>
+                                  {% endif %}
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-right flex-fill">
+                                  <div class="mb-2"><span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id }}</span></div>
+{% if d.qrr_set_by or d.qrr_responsible_fio %}
+  <div class="mb-2 text-muted small">
+    Назначил: {{ d.qrr_responsible_fio|default:d.qrr_set_by }}{% if d.qrr_set_date_str or d.qrr_set_time_str %} • {{ d.qrr_set_date_str }} {{ d.qrr_set_time_str }}{% endif %}
+  </div>
+{% endif %}
+                                <div class="mb-2">
+                                  <label class="form-label">Ответственные (можно несколько)</label>
+                                  <div class="border rounded p-2" style="max-height: 170px; overflow:auto" id="respbox-{{ d.defect_id|slugify }}">
+                                    {% for r in qrr_responsibles_all %}
+                                      <label class="d-flex align-items-center gap-2 mb-1">
+                                        <input type="checkbox" class="form-check-input" data-resp value="{{ r.id }}" id="respopt-{{ d.defect_id|slugify }}-{{ r.id }}" {% if d.qrr_responsibles_ids and r.id in d.qrr_responsibles_ids %}checked{% endif %}>
+                                        <span class="small">{{ r.name }}</span>
+                                      </label>
+                                    {% endfor %}
+                                  </div>
+                                  {% if d.qrr_responsibles %}
+                                    <div class="mt-2">
+                                      {% for nm in d.qrr_responsibles %}
+                                        <span class="badge text-bg-light me-1">{{ nm }}</span>
+                                      {% endfor %}
+                                    </div>
+                                  {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                  <label class="form-label">Обоснование (опционально)</label>
+                                  <input class="form-control" id="resp-just-{{ d.defect_id|slugify }}" placeholder="Опционально" value="{{ d.extra.qrr_responsible_justification|default:'' }}">
+                                </div>
+
+                                <button class="btn btn-primary w-100 mb-3" onclick="saveDefect('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">Сохранить</button>
+                                  <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chgbox-{{ d.defect_id|slugify }}" onchange="toggleGradeField('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">
+                                    <label class="form-check-label" for="chgbox-{{ d.defect_id|slugify }}">Менять грейд</label>
+                                  </div>
+                                  <div id="grade-pane-{{ d.defect_id|slugify }}" style="display:none">
+                                    <div class="input-group mb-2">
+                                      <span class="input-group-text">Grade</span>
+                                      <select class="form-select" id="grade-{{ d.defect_id|slugify }}" data-current-grade="{{ d.grade|default:'' }}">
+                                        {% for gg in grades_all %}
+                                          <option value="{{ gg }}" {% if d.grade == gg %}selected{% endif %}>{{ gg }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </div>
+                                  <div class="input-group mb-3">
+                                    <span class="input-group-text">Обоснование</span>
+                                    <input class="form-control" id="grade-just-{{ d.defect_id|slugify }}" placeholder="Обязательно при смене">
+                                  </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                </div>
+                <!-- Assigned -->
+                <div class="tab-pane fade {% if status_filter == 'assigned' %}show active{% endif %}" id="{{ gid }}-assigned" role="tabpanel">
+                  {% if not items %}
+                    <div class="alert alert-light border">Нет дефектов.</div>
+                  {% else %}
+                    {% for d in items %}
+                      {% if d.qrr_responsibles or d.qrr_responsibles_ids %}
+                          <div class="card card-slim mb-3">
+                            <div class="card-body">
+                              <div class="d-lg-flex qrr-grid gap-3">
+                                <div class="col-left flex-fill">
+                                  <div class="mb-1 fw-semibold">{{ d.vin }}</div>
+                                  {% if d.brand or d.model %}
+                                    <div class="mb-1 text-muted">{{ d.brand|default:"" }}{% if d.model %} • {{ d.model }}{% endif %}</div>
+                                  {% else %}
+                                    {% with trace=vin_trace_map|get_item:d.vin %}
+                                      {% if trace %}
+                                        <div class="mb-1 text-muted">{{ trace.brand|default:"" }}{% if trace.model %} • {{ trace.model }}{% endif %}</div>
+                                      {% endif %}
+                                    {% endwith %}
+                                  {% endif %}
+                                  <div class="mb-1">{{ d.post }} • Линия {{ d.line|default:"—" }} • {{ d.zone }}</div>
+                                  <div class="mb-1">{{ d.unit }}</div>
+                                  <div class="mb-1">{{ d.defect_description }}</div>
+                                  {% if d.comment %}<div class="mt-1">{{ d.comment }}</div>{% endif %}
+                                  <div class="mb-1"><span class="badge text-bg-dark">{{ d.grade|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.controller_raw|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.date_str|default:"—" }}</span></div>
+                                  <div class="mb-1"><span class="text-muted">{{ d.time_str|default:"—" }}</span></div>
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-mid flex-fill d-flex justify-content-center align-items-center">
+                                  {% if d.photos %}
+                                    <a class="photo-btn"
+                                       href="{% url 'view_image' image_path=d.photos.0|cut:'/media/' %}?index=0&group={{ d.group_key }}&photos={{ d.photos_json|urlencode }}"
+                                       target="_blank" rel="noopener noreferrer">
+                                      Фото ({{ d.photos|length }})
+                                    </a>
+                                  {% else %}
+                                    <span class="text-muted">Фото нет</span>
+                                  {% endif %}
+                                </div>
+                                <div class="divider-v"></div>
+                                <div class="col-right flex-fill">
+                                  <div class="mb-2"><span class="badge text-bg-secondary badge-sticky">ID: {{ d.defect_id }}</span></div>
+{% if d.qrr_set_by or d.qrr_responsible_fio %}
+  <div class="mb-2 text-muted small">
+    Назначил: {{ d.qrr_responsible_fio|default:d.qrr_set_by }}{% if d.qrr_set_date_str or d.qrr_set_time_str %} • {{ d.qrr_set_date_str }} {{ d.qrr_set_time_str }}{% endif %}
+  </div>
+{% endif %}
+                                <div class="mb-2">
+                                  <label class="form-label">Ответственные (можно несколько)</label>
+                                  <div class="border rounded p-2" style="max-height: 170px; overflow:auto" id="respbox-{{ d.defect_id|slugify }}">
+                                    {% for r in qrr_responsibles_all %}
+                                      <label class="d-flex align-items-center gap-2 mb-1">
+                                        <input type="checkbox" class="form-check-input" data-resp value="{{ r.id }}" id="respopt-{{ d.defect_id|slugify }}-{{ r.id }}" {% if d.qrr_responsibles_ids and r.id in d.qrr_responsibles_ids %}checked{% endif %}>
+                                        <span class="small">{{ r.name }}</span>
+                                      </label>
+                                    {% endfor %}
+                                  </div>
+                                  {% if d.qrr_responsibles %}
+                                    <div class="mt-2">
+                                      {% for nm in d.qrr_responsibles %}
+                                        <span class="badge text-bg-light me-1">{{ nm }}</span>
+                                      {% endfor %}
+                                    </div>
+                                  {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                  <label class="form-label">Обоснование (опционально)</label>
+                                  <input class="form-control" id="resp-just-{{ d.defect_id|slugify }}" placeholder="Опционально" value="{{ d.extra.qrr_responsible_justification|default:'' }}">
+                                </div>
+
+                                <button class="btn btn-primary w-100 mb-3" onclick="saveDefect('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">Сохранить</button>
+                                  <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="chgbox-{{ d.defect_id|slugify }}" onchange="toggleGradeField('{{ d.defect_id }}','{{ d.defect_id|slugify }}')">
+                                    <label class="form-check-label" for="chgbox-{{ d.defect_id|slugify }}">Менять грейд</label>
+                                  </div>
+                                  <div id="grade-pane-{{ d.defect_id|slugify }}" style="display:none">
+                                    <div class="input-group mb-2">
+                                      <span class="input-group-text">Grade</span>
+                                      <select class="form-select" id="grade-{{ d.defect_id|slugify }}" data-current-grade="{{ d.grade|default:'' }}">
+                                        {% for gg in grades_all %}
+                                          <option value="{{ gg }}" {% if d.grade == gg %}selected{% endif %}>{{ gg }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </div>
+                                  <div class="input-group mb-3">
+                                    <span class="input-group-text">Обоснование</span>
+                                    <input class="form-control" id="grade-just-{{ d.defect_id|slugify }}" placeholder="Обязательно при смене">
+                                  </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endwith %}
+        {% endif %}
+      {% endwith %}
+    {% endfor %}
+  </div>
+  <nav class="d-flex align-items-center justify-content-between mt-3">
+    <div class="text-muted small">Стр. {{ page }} из {{ total_pages }} (по {{ page_size }} на страницу)</div>
+    <div class="btn-group">
+      {% if has_prev %}
+        <a class="btn btn-outline-dark" href="?grade={{ grade_filter|urlencode }}&status={{ status_filter|urlencode }}&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}&page={{ page|add:-1 }}">← Предыдущая</a>
+      {% else %}
+        <button class="btn btn-outline-secondary" disabled>← Предыдущая</button>
+      {% endif %}
+      {% if has_next %}
+        <a class="btn btn-dark" href="?grade={{ grade_filter|urlencode }}&status={{ status_filter|urlencode }}&q={{ query|urlencode }}&page_size={{ page_size }}{% for b in brands_selected %}&brand={{ b|urlencode }}{% endfor %}{% for p in posts_selected %}&post={{ p|urlencode }}{% endfor %}{% if start_date %}&start_date={{ start_date|date:'Y-m-d' }}{% endif %}{% if end_date %}&end_date={{ end_date|date:'Y-m-d' }}{% endif %}&page={{ page|add:1 }}">Следующая →</a>
+      {% else %}
+        <button class="btn btn-secondary" disabled>Следующая →</button>
+      {% endif %}
+    </div>
+  </nav>
+</div>
+
+
+<script>
+// helpers
+function getCsrf(){
+  const name="csrftoken"; let v=null;
+  if(document.cookie && document.cookie!==""){
+    for(const c of document.cookie.split(";")){
+      const cc=c.trim();
+      if(cc.substring(0,name.length+1)===(name+"=")){ v=decodeURIComponent(cc.substring(name.length+1)); break; }
+    }
+  }
+  return v;
+}
+function cssId(id){ return id.replaceAll(":","-").replaceAll("/","-").replaceAll(".","-"); }
+
+
+// actions
+async function setResponsible(defectId, key){
+  const box = document.getElementById(`respbox-${key}`);
+  if (!box){ toast('Список ответственных не найден'); return; }
+  const ids = Array.from(box.querySelectorAll('input[data-resp]:checked')).map(i => {
+    const v = i.value; const n = Number(v);
+    return Number.isFinite(n) ? n : v; // поддержка как ID, так и имен
+  });
+  if (!ids.length){ toast('Выберите хотя бы одного ответственного'); return; }
+  const j = (document.getElementById(`resp-just-${key}`)?.value || '').trim();
+  const res = await fetch("{% url 'api_qrr_set_defect_responsible' %}", {
+    method:"POST",
+    headers:{"Content-Type":"application/json","X-CSRFToken":getCsrf()},
+    body: JSON.stringify({defect_id:defectId, responsibles: ids, justification: j})
+  });
+  const data = await res.json();
+  toast(data.ok ? "Сохранено" : ("Ошибка: "+(data.error||"")));
+  if(data.ok){ location.reload(); }
+}
+
+// Unified save action for responsible and/or grade change
+async function saveDefect(defectId, key){
+  // 1) gather responsibles
+  const box = document.getElementById(`respbox-${key}`);
+  const ids = box ? Array.from(box.querySelectorAll('input[data-resp]:checked')).map(i => {
+    const v = i.value; const n = Number(v);
+    return Number.isFinite(n) ? n : v;
+  }) : [];
+  const justification = (document.getElementById(`resp-just-${key}`)?.value || '').trim();
+
+  // 2) grade change?
+  const chg = document.getElementById(`chgbox-${key}`);
+  const wantGrade = !!(chg && chg.checked);
+  let gradePayload = null;
+  if (wantGrade){
+    const sel = document.getElementById(`grade-${key}`);
+    const cur = (sel?.getAttribute('data-current-grade')||'').trim();
+    const grade = (sel?.value||'').trim();
+    const just  = (document.getElementById(`grade-just-${key}`)?.value||'').trim();
+    if (!grade){ toast('Выберите грейд'); return; }
+    if (grade !== cur && !just){ toast('Нужно указать обоснование при смене грейда'); return; }
+    gradePayload = {defect_id:defectId, grade:grade, justification: just||("Без комментария")};
+  }
+
+  // 3) минимум одно действие?
+  if ((!ids || ids.length===0) && !gradePayload){
+    toast('Нечего сохранять: выберите ответственных или включите смену грейда');
+    return;
+  }
+
+  // 4) do requests sequentially
+  try{
+    if (ids && ids.length){
+      const res1 = await fetch("{% url 'api_qrr_set_defect_responsible' %}", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","X-CSRFToken":getCsrf()},
+        body: JSON.stringify({defect_id:defectId, responsibles: ids, justification})
+      });
+      const j1 = await res1.json();
+      if (!j1.ok){ throw new Error(j1.error||'save responsibles failed'); }
+    }
+    if (gradePayload){
+      const res2 = await fetch("{% url 'api_qrr_change_defect_grade' %}", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","X-CSRFToken":getCsrf()},
+        body: JSON.stringify(gradePayload)
+      });
+      const j2 = await res2.json();
+      if (!j2.ok){ throw new Error(j2.error||'change grade failed'); }
+    }
+    toast('Сохранено');
+    location.reload();
+  }catch(e){
+    toast('Ошибка: '+ e.message);
+  }
+}
+
+function toggleGradeField(defectId, key){
+  const box=document.getElementById(`chgbox-${key}`);
+  const pane=document.getElementById(`grade-pane-${key}`);
+  pane.style.display = box.checked ? "block" : "none";
+  if (!box.checked) return;
+  // attach change listener to enforce justification visibility if grade differs
+  const sel = document.getElementById(`grade-${key}`);
+  const justInput = document.getElementById(`grade-just-${key}`);
+  const cur = (sel.getAttribute('data-current-grade')||'').trim();
+  function checkJust(){
+    if (sel.value.trim() !== cur) {
+      justInput.placeholder = "Обязательно при смене";
+    } else {
+      justInput.placeholder = "Обязательно при смене"; // keep hint
+    }
+  }
+  sel.addEventListener('change', checkJust, { once: false });
+  checkJust();
+}
+
+async function changeGrade(defectId, key){
+  const sel = document.getElementById(`grade-${key}`);
+  const cur = (sel.getAttribute('data-current-grade')||'').trim();
+  const grade = sel.value.trim();
+  const just  = document.getElementById(`grade-just-${key}`).value.trim();
+  if (grade !== cur && !just) {
+    toast("Нужно указать обоснование при смене грейда");
+    return;
+  }
+  const res = await fetch("{% url 'api_qrr_change_defect_grade' %}", {
+    method:"POST", headers:{"Content-Type":"application/json","X-CSRFToken":getCsrf()},
+    body: JSON.stringify({defect_id:defectId, grade:grade, justification:just})
+  });
+  const data = await res.json();
+  toast(data.ok ? "Изменено" : ("Ошибка: "+(data.error||"")));
+  if(data.ok){ location.reload(); }
+}
+
+// --- Tabs: use Bootstrap if available, else fallback manual toggling ---
+(function initTabs(){
+  const hasBs = !!(window.bootstrap && bootstrap.Tab);
+  document.querySelectorAll('[data-bs-toggle="tab"]').forEach(el => {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      const targetSel = this.getAttribute('data-bs-target');
+      const target = targetSel ? document.querySelector(targetSel) : null;
+
+      if (hasBs) {
+        try { new bootstrap.Tab(this).show(); return; } catch (e) {}
+      }
+      // Fallback: manual toggle
+      const tablist = this.closest('[role="tablist"]');
+      if (!tablist) return;
+
+      // deactivate all buttons in this tablist
+      tablist.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
+
+      // activate current button
+      this.classList.add('active');
+
+      // find related tab-content within the same logical block
+      // usually the parent of tablist contains the .tab-content to switch
+      let scope = tablist.parentElement;
+      let content = scope ? scope.querySelector(':scope > .tab-content') : null;
+      if (!content) {
+        // try next sibling as a fallback
+        content = tablist.nextElementSibling && tablist.nextElementSibling.classList.contains('tab-content')
+          ? tablist.nextElementSibling
+          : null;
+      }
+      if (!content) return;
+
+      // hide all panes in this content
+      content.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active', 'show'));
+      if (target) {
+        target.classList.add('active', 'show');
+      }
+      // If this is a top-level grade tab, reset its inner sub-tabs to the first one
+      if (this.hasAttribute('data-grade-tab') && target) {
+        const subTablist = target.querySelector('.subbar');
+        const subContent = target.querySelector('.tab-content');
+        if (subTablist && subContent) {
+          const firstBtn = subTablist.querySelector('.nav-link');
+          if (firstBtn) {
+            // deactivate all sub buttons
+            subTablist.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
+            // hide all sub panes
+            subContent.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active', 'show'));
+            // activate first
+            firstBtn.classList.add('active');
+            const tSel = firstBtn.getAttribute('data-bs-target');
+            const tPane = tSel ? subContent.querySelector(tSel) : null;
+            if (tPane) tPane.classList.add('active','show');
+          }
+        }
+      }
+    });
+  });
+})();
+// tiny toast
+function toast(msg){
+  const el=document.createElement("div");
+  el.className="position-fixed top-0 start-50 translate-middle-x p-2";
+  el.style.zIndex=1080;
+  el.innerHTML=`<div class="alert alert-dark shadow-sm py-2 px-3 mb-0" role="alert">${msg}</div>`;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 1800);
+}
+
+function filterResp(key, query){
+  const box = document.getElementById(`respbox-${key}`);
+  if (!box) return;
+  const q = (query || '').toLowerCase();
+  for (const label of box.querySelectorAll('label')){
+    const txt = label.textContent.toLowerCase();
+    label.style.display = txt.includes(q) ? '' : 'none';
+  }
+}
+</script>
+{% endblock %}

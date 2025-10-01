@@ -1,0 +1,67 @@
+{% extends "users/base.html" %}
+
+{% block title %}Детали контейнера{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <a href="{% url 'notifications' %}" class="btn btn-secondary my-3">⬅ Назад в Уведомления</a>
+
+    <h2 class="text-center">Детали контейнера</h2>
+
+    <div class="card mt-3">
+        <div class="card-body">
+            <h5 class="card-title">Номер контейнера: {{ defect.container_number }}</h5>
+
+            <p class="card-text"><strong>Пост:</strong> {{ defect.post.name|default:"-" }}</p>
+            <p class="card-text"><strong>Контроллер:</strong> {{ defect.controller.username|default:"-" }}</p>
+
+            <p class="card-text"><strong>Описание контейнера:</strong> {{ defect.container_description|default:"-" }}</p>
+            <p class="card-text"><strong>Состояние контейнера:</strong>
+                {% if defect.container_status == "damaged" %}
+                    <span class="text-danger">Поврежден</span>
+                {% else %}
+                    <span class="text-success">Не поврежден</span>
+                {% endif %}
+            </p>
+            <p class="card-text"><strong>Описание пломбы:</strong> {{ defect.seal_description|default:"-" }}</p>
+            <p class="card-text"><strong>Дата фиксации:</strong> {{ defect.created_at|date:"d.m.Y H:i" }}</p>
+        </div>
+    </div>
+
+    <!-- Фото контейнера -->
+    <div class="mt-4">
+        <h4>Фото контейнера</h4>
+        <div class="row">
+            {% for image_url in defect.get_container_images %}
+                <div class="col-md-4">
+                    <img src="{{ image_url }}" class="img-fluid rounded shadow-sm mb-3" alt="Фото контейнера">
+                </div>
+            {% empty %}
+                <p>Фото контейнера отсутствуют.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Фото номера контейнера -->
+    <div class="mt-4">
+        <h4>Фото номера контейнера</h4>
+        {% if defect.container_number_image %}
+            <img src="{{ defect.container_number_image.url }}" class="img-fluid rounded shadow-sm mb-3" alt="Фото номера контейнера">
+        {% else %}
+            <p>Фото номера контейнера отсутствует.</p>
+        {% endif %}
+    </div>
+
+    <!-- Фото пломбы -->
+    <div class="mt-4">
+        <h4>Фото пломбы контейнера</h4>
+        {% if defect.seal_image %}
+            <img src="{{ defect.seal_image.url }}" class="img-fluid rounded shadow-sm mb-3" alt="Фото пломбы контейнера">
+        {% else %}
+            <p>Фото пломбы контейнера отсутствует.</p>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "users/base.html" %}
+{% load static custom_filters %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">{{ title }}</h4>
+        <div class="d-flex align-items-center">
+            <a href="javascript:history.back()" class="btn btn-outline-secondary">← Назад</a>
+            <a class="btn btn-outline-secondary ms-2" href="{% url 'export_vin_list_excel' vin_type %}">
+                <i class="bi bi-download"></i> Скачать Excel
+            </a>
+        </div>
+    </div>
+
+    {% if vins %}
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 60px;">#</th>
+                    <th>VIN</th>
+                    <th>Бренд</th>
+                    <th>Модель</th>
+                    <th>Дата прохождения</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vin in vins %}
+                <tr onclick="window.location.href='{% url 'vin_tracking_view' vin %}'" style="cursor: pointer;">
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ vin }}</td>
+                    <td>{{ trace_data_map|get_item:vin|get_item:"brand" }}</td>
+                    <td>{{ trace_data_map|get_item:vin|get_item:"model" }}</td>
+                    <td>{{ vin_final_date_map|get_item:vin }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+        <div class="alert alert-warning">Нет VIN-номеров для отображения.</div>
+    {% endif %}
+</div>
+{% endblock %}

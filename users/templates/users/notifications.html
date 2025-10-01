@@ -1,0 +1,38 @@
+{% extends "users/base.html" %}
+
+{% block title %}Уведомления{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <a href="{% url 'master_dashboard' %}" class="btn btn-secondary my-3">⬅ Назад в Дэшборд</a>
+
+    <h2 class="text-center">Уведомления</h2>
+
+    <div class="list-group mt-3">
+        {% for notification in notifications %}
+
+            {% if notification.vin_number %}
+                <a href="{% url 'uud_defect_details' notification.vin_number %}" class="list-group-item list-group-item-action {% if not notification.is_read %}list-group-item-warning{% endif %}">
+            {% elif notification.defect %}
+                <a href="{% url 'sb_defect_details' notification.defect.id %}" class="list-group-item list-group-item-action {% if not notification.is_read %}list-group-item-warning{% endif %}">
+            {% else %}
+                <a href="#" class="list-group-item list-group-item-action disabled">
+            {% endif %}
+
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">{{ notification.message }}</h5>
+                    <small>{{ notification.created_at|date:"d.m.Y H:i" }}</small>
+                </div>
+                <p class="mb-1">
+                    {% if not notification.is_read %}
+                        <strong>Новое</strong>
+                    {% endif %}
+                </p>
+            </a>
+
+        {% empty %}
+            <p class="text-center">У вас нет уведомлений.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

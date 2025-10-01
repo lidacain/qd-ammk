@@ -1,0 +1,23 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block title %}VIN на посте{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <a href="{% url 'vin_tracking_overview' %}" class="btn btn-outline-secondary mb-3">← Назад к обзору</a>
+
+    <h3 class="mb-4">📍 VIN-ы за сегодня на посте: <strong>{{ post }}</strong></h3>
+
+    {% if vins %}
+        <ul class="list-group">
+            {% for vin in vins %}
+                <li class="list-group-item">
+                    <a href="{% url 'vin_tracking_view' vin=vin %}">{{ vin }}</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="text-muted">Сегодня VIN-ов на этом посте не было.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,351 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block title %}SUMMARY{% endblock %}
+
+{% block content %}
+
+<style>
+    /* Унифицированная высота инпутов и чекбоксов */
+    .brands-models .form-check-input {
+        width: 22px;
+        height: 22px;
+    }
+
+    /* Центрируем чекбоксы и лейблы по вертикали */
+    .form-check {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        height: 40px;
+    }
+
+
+    .brands-models .form-check-label {
+        font-size: 1.1rem;
+    }
+
+    .choices__inner {
+        min-height: 40px;
+        padding: 4px 8px;
+    }
+
+    .form-label {
+        font-size: 0.95rem;
+    }
+</style>
+
+<div class="container py-4">
+
+    <!-- Назад -->
+    <div class="mb-3">
+        <a href="{% url 'assembly_workshop_dashboard' %}" class="btn btn-light">
+            ← Назад
+        </a>
+    </div>
+
+    <h3 class="text-center mb-4 fw-bold" style="color: white">SUMMARY</h3>
+
+    <!-- Кнопка для скачивания отчёта -->
+<!--    <form method="get" action="{% url 'download_summary_report' %}" class="card p-3 mb-4 bg-white shadow-sm">-->
+<!--        <h5 class="text-center mb-3 fw-bold">Скачать Excel-отчет</h5>-->
+<!--        <p class="text-center mb-4">Выберите бренд и даты для формирования отчета. Отчет будет включать данные по всем постам.</p>-->
+<!--        <div class="row align-items-end">-->
+<!--            <div class="col-md-4">-->
+<!--                <label class="form-label fw-bold">Выберите бренд для отчета:</label>-->
+<!--                <select name="download_brand" class="form-select">-->
+<!--                    {% for brand in fixed_brands_excel %}-->
+<!--                        <option value="{{ brand }}" {% if brand == download_brand %}selected{% endif %}>-->
+<!--                            {{ brand }}-->
+<!--                        </option>-->
+<!--                    {% endfor %}-->
+<!--                </select>-->
+<!--            </div>-->
+<!--            <div class="col-md-3">-->
+<!--                <label class="form-label fw-bold">Дата с:</label>-->
+<!--                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">-->
+<!--            </div>-->
+<!--            <div class="col-md-3">-->
+<!--                <label class="form-label fw-bold">Дата по:</label>-->
+<!--                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">-->
+<!--            </div>-->
+<!--            <div class="col-md-2">-->
+<!--                <button type="submit" class="btn btn-success w-100">-->
+<!--                    📥 Excel-отчет-->
+<!--                </button>-->
+<!--            </div>-->
+<!--        </div>-->
+<!--    </form>-->
+
+    <form method="get" class="mb-4" id="filter-form">
+        <div class="card p-3 bg-white shadow-sm">
+        <h5 class="text-center mb-3 fw-bold">Фильтр по брендам и моделям</h5>
+        <p class="text-center mb-4">Выберите бренды и модели для отображения данных. Отчёт будет включать данные по всем постам.</p>
+            <!-- Ряд с датами -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="start_date" class="form-label fw-bold">С:</label>
+                    <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="end_date" class="form-label fw-bold">По:</label>
+                    <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date }}">
+                </div>
+            </div>
+
+            <!-- Бренды и модели -->
+            <div class="row brands-models">
+            <!-- Бренды -->
+            <div class="col-md-6">
+                <label class="form-label fw-bold">Бренды:</label>
+                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-2">
+                    {% for brand in brands_all %}
+                        <div class="col">
+                            <div class="form-check d-flex align-items-center gap-2">
+                                <input class="form-check-input" type="checkbox" name="brand" value="{{ brand }}"
+                                       id="brand_{{ forloop.counter }}"
+                                       {% if brand in brands_selected %}checked{% endif %}>
+                                <label class="form-check-label" for="brand_{{ forloop.counter }}">
+                                    {{ brand }}
+                                </label>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Модели -->
+            <div class="col-md-6">
+                <label class="form-label fw-bold">Модели:</label>
+                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-2">
+                    {% for model in models_available %}
+                        <div class="col">
+                            <div class="form-check d-flex align-items-center gap-2">
+                                <input class="form-check-input" type="checkbox" name="model" value="{{ model }}"
+                                       id="model_{{ forloop.counter }}"
+                                       {% if model in models_selected %}checked{% endif %}>
+                                <label class="form-check-label" for="model_{{ forloop.counter }}">
+                                    {{ model }}
+                                </label>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        </div>
+    </form>
+
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-5 g-3 mb-5">
+<!--        <div class="col">-->
+<!--            <div class="card shadow-sm border-secondary text-center h-100">-->
+<!--                <div class="card-body p-2">-->
+<!--                    <h6 class="card-title small">Всего осмотров</h6>-->
+<!--                    <p class="fs-5 text-secondary mb-0">{{ overall_total_inspections }}</p>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
+
+        <div class="col">
+            <a href="{% url 'vin_list_view' 'all' %}" class="text-decoration-none">
+                <div class="card shadow-sm border-success text-center h-100">
+                    <div class="card-body p-2">
+                        <h6 class="card-title small">Пройденных кузовов</h6>
+                        <p class="fs-5 mb-0">{{ unique_vin_count }}</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col">
+            <a href="{% url 'vin_list_view' 'without_defects' %}" class="text-decoration-none">
+                <div class="card shadow-sm border-success text-center h-100">
+                    <div class="card-body p-2">
+                        <h6 class="card-title small">Без дефектов</h6>
+                        <p class="fs-5 text-success mb-0">{{ overall_without_defects }}</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col">
+            <a href="{% url 'vin_list_view' 'with_defects' %}" class="text-decoration-none">
+                <div class="card shadow-sm border-danger text-center h-100">
+                    <div class="card-body p-2">
+                        <h6 class="card-title small">С дефектами</h6>
+                        <p class="fs-5 text-danger mb-0">{{ overall_inspections_with_defects }}</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col">
+            <a href="{% url 'export_all_defects_excel' %}?start_date={{ start_date }}&end_date={{ end_date }}&download_brand={{ download_brand }}" class="text-decoration-none">
+                <div class="card shadow-sm border-info text-center h-100">
+                    <div class="card-body p-2">
+                        <h6 class="card-title small">Всего дефектов</h6>
+                        <p class="fs-5 text-info mb-0">{{ overall_total_defects }}</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col">
+            <div class="card shadow-sm border-primary text-center h-100">
+                <div class="card-body p-2">
+                    <h6 class="card-title small">DPU</h6>
+                    <p class="fs-5 mb-0">{{ overall_dpu }}</p>
+                </div>
+            </div>
+        </div>
+
+<!--        <div class="col">-->
+<!--            <div class="card shadow-sm border-success text-center h-100">-->
+<!--                <div class="card-body p-2">-->
+<!--                    <h6 class="card-title small">STR (%)</h6>-->
+<!--                    <p class="fs-5 mb-0">{{ overall_str_percentage }}%</p>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
+    </div>
+
+
+    <!-- 📋 Отчёты по постам -->
+    <div class="row row-cols-1 g-4">
+        {% for key, post in posts_data.items %}
+        <div class="col">
+            <div class="card shadow-lg border-0 rounded-4">
+                <div class="card-body">
+                    <!-- Заголовок поста -->
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="card-title mb-0">{{ post.title }}</h5>
+                    <div class="d-flex gap-2">
+                        <a href="{{ post.report_url }}" class="btn btn-outline-dark btn-sm" title="Отчёт">
+                            <i class="bi bi-eye-fill"></i>
+                        </a>
+                        <a href="{{ post.table_url }}" class="btn btn-outline-primary btn-sm" title="Таблица">
+                            <i class="bi bi-table"></i>
+                        </a>
+                        <a href="{{ post.export_url }}" class="btn btn-outline-success btn-sm" title="Экспорт">
+                            <i class="bi bi-file-earmark-arrow-down-fill"></i>
+                        </a>
+                    </div>
+                </div>
+
+                    <!-- Статистика -->
+                    <div class="row text-center mb-4 row-cols-2 row-cols-md-3 row-cols-lg-5 g-3">
+                        <div class="col">
+                            <h6>Прошедшие кузова</h6>
+                            <p class="fs-6">{{ post.total_inspections }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>Без дефектов</h6>
+                            <p class="fs-6 text-success">{{ post.without_defects }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>С дефектами</h6>
+                            <p class="fs-6 text-danger">{{ post.inspections_with_defects }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>Всего дефектов</h6>
+                            <p class="fs-6 text-info">{{ post.total_defects }}</p>
+                        </div>
+                        <div class="col">
+                            <h6>DPU</h6>
+                            <p class="fs-6">{{ post.dpu }}</p>
+                        </div>
+<!--                        <div class="col">-->
+<!--                            <h6>STR (%)</h6>-->
+<!--                            <p class="fs-6">{{ post.str_percentage }}%</p>-->
+<!--                        </div>-->
+                    </div>
+
+                    <!-- Топ -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-center mb-2">Топ дефектов</h6>
+                            <table class="table table-striped">
+                                <tbody>
+                                    {% for defect, count in post.top_defects %}
+                                        {% with defect|split:"(" as parts %}
+                                            <tr>
+                                                <td>
+                                                    <div><strong>Дефект:</strong> {{ parts.0|default:"—"|strip }}</div>
+                                                    {% if parts|length > 1 %}
+                                                        <div><strong>Деталь:</strong> {{ parts.1|cut:")"|strip }}</div>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="text-end align-middle">{{ count }}</td>
+                                            </tr>
+                                        {% endwith %}
+                                    {% empty %}
+                                        <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="col-md-6">
+                            <h6 class="text-center mb-2">Топ контролеров</h6>
+                            <table class="table table-striped">
+                                <tbody>
+                                    {% for controller, count in post.top_controllers %}
+                                        <tr>
+                                            <td>
+                                                {{ controller }}
+                                                {% with controller_users|dict_get:controller as user %}
+                                                    {% if user %}
+                                                        <br><small>{{ user.last_name }} {{ user.first_name }}</small>
+                                                    {% endif %}
+                                                {% endwith %}
+                                            </td>
+                                            <td class="text-end align-middle">{{ count }}</td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <br>
+    <br>
+    <br>
+    <br>
+</div>
+
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            cb.addEventListener("change", () => {
+                cb.closest("form").submit();
+            });
+        });
+    });
+</script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const form = document.getElementById('filter-form');
+        const startDate = document.getElementById('start_date');
+        const endDate = document.getElementById('end_date');
+
+        function autoSubmitIfBothDates() {
+            if (startDate.value && endDate.value) {
+                form.submit();
+            }
+        }
+
+        startDate.addEventListener('change', autoSubmitIfBothDates);
+        endDate.addEventListener('change', autoSubmitIfBothDates);
+    });
+</script>
+{% endblock %}

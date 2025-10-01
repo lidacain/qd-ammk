@@ -1,0 +1,1407 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}UUD{% endblock %}
+
+{% block content %}
+<div id="uudPageRoot" data-user-role="{{ request.user.role|default_if_none:'' }}">
+  <div class="container mt-4" style="max-width:720px">
+    <h4 class="mb-3">Пост — УУД</h4>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <form method="post" action="">
+      {% csrf_token %}
+
+      <!-- VIN -->
+      <div class="mb-3 position-relative">
+        <label class="form-label">VIN <span class="text-danger">*</span></label>
+
+        <div style="position: relative;">
+          <input
+            type="text"
+            id="vin_search"
+            name="vin"
+            class="form-control"
+            placeholder="Сканируйте или введите VIN…"
+            maxlength="17"
+            autocomplete="off"
+            autofocus
+            value="{{ vin|default_if_none:'' }}"
+          >
+          <span
+            id="clear_vin_search"
+            style="position:absolute; right:10px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:18px; color:#dc3545"
+            title="Очистить"
+          >❌</span>
+        </div>
+
+        <!-- Кнопка сканера и контейнер -->
+        <button type="button" id="start_qr_scan" class="btn btn-primary mt-2">📷 Сканировать QR</button>
+        <div id="qr-reader" style="width:300px; display:none;"></div>
+
+        <!-- Подсказки по VIN -->
+        <ul
+          id="vin_list"
+          class="list-group mt-2"
+          style="display:none; position:absolute; width:100%; z-index:1000;"
+        ></ul>
+      </div>
+
+      <!-- Блок с информацией из трейсинга -->
+      <div
+        id="vehicle_info"
+        class="mb-4 p-3 border rounded"
+        style="{% if not vehicle_info %}display: none;{% endif %}"
+      >
+        <h6 class="mb-2">Информация по VIN</h6>
+        <p class="mb-1"><strong>VIN:</strong> <span id="vin_value">{{ vehicle_info.vin|default_if_none:'' }}</span></p>
+        <p class="mb-1"><strong>Номер двигателя:</strong> <span id="engine_number_value">{{ vehicle_info.engine_number|default_if_none:'' }}</span></p>
+        <p class="mb-1"><strong>Модель:</strong> <span id="model_value">{{ vehicle_info.model|default_if_none:'' }}</span></p>
+        <p class="mb-0"><strong>Цвет кузова:</strong> <span id="body_color_value">{{ vehicle_info.body_color|default_if_none:'' }}</span></p>
+      </div>
+
+      <!-- Секция с дефектами -->
+      <div id="defects_section" class="mb-4" style="{% if defects_count|default:0 == 0 %}display:none;{% endif %}">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h6 class="mb-0">Дефекты по VIN</h6>
+          <span class="badge bg-danger-subtle text-danger border">
+            всего: {{ defects_count|default:0 }}
+          </span>
+        </div>
+
+        <div class="accordion" id="defectsAccordion">
+          {% for item in defect_list %}
+            {% with key=forloop.counter|stringformat:"s" %}
+            {% with acc_id="defect-"|add:key %}
+            <div class="accordion-item mb-2
+              {% if item.extra.UUD %}
+                {% if item.extra.UUD.status == 'checking' %}uud-status-checking
+                {% elif item.extra.UUD.status == 'resolved' %}uud-status-resolved
+                {% elif item.extra.UUD.status == 'not_resolved' or not item.extra.UUD.status %}uud-status-failed
+                {% elif item.extra.UUD.status == 'impossible' %}uud-status-impossible
+                {% endif %}
+              {% else %}
+                uud-status-failed
+              {% endif %}
+            ">
+              <h2 class="accordion-header" id="heading-{{ acc_id }}">
+                <button
+                  class="accordion-button collapsed py-2"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#collapse-{{ acc_id }}"
+                  aria-expanded="false"
+                  aria-controls="collapse-{{ acc_id }}"
+                >
+                  <div class="w-100 d-flex flex-wrap align-items-center gap-2">
+                    <span class="badge bg-danger text-white">{{ item.grade|default:"—" }}</span>
+                    <strong class="me-1">{{ item.unit|default:"—" }}</strong>
+                    <span class="text-muted">— {{ item.name|default:"—" }}</span>
+                    <span class="ms-auto text-muted small">
+                      {{ item.zone|default:"" }}{% if item.post %} / {{ item.post }}{% endif %}
+                    </span>
+                  </div>
+                </button>
+              </h2>
+
+              <div
+                id="collapse-{{ acc_id }}"
+                class="accordion-collapse collapse"
+                aria-labelledby="heading-{{ acc_id }}"
+                data-bs-parent="#defectsAccordion"
+              >
+                <div class="accordion-body">
+                  <!-- Маленький ID дефекта -->
+                  <div class="mb-3">
+                    <span class="badge bg-secondary me-2">ID</span>
+                    <code class="small text-muted">{{ item.defect_id }}</code>
+                  </div>
+
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <ul class="list-unstyled small mb-0">
+                        <li><strong>Деталь:</strong> {{ item.unit|default:"—" }}</li>
+                        <li><strong>Дефект:</strong> {{ item.name|default:"—" }}</li>
+                        <li><strong>Грейд:</strong> {{ item.grade|default:"—" }}</li>
+                        <li>
+                          <strong>Зона / Пост:</strong>
+                          {{ item.zone|default:"—" }}{% if item.post %} / {{ item.post }}{% endif %}
+                        </li>
+                        <li><strong>Ввел:</strong> {{ item.controller|default:"—" }}</li>
+                        <li>
+                          <strong>Когда:</strong>
+                          {% if item.date_added %}{{ item.date_added|date:"Y-m-d H:i" }}{% else %}—{% endif %}
+                        </li>
+                        {% if item.comment %}<li><strong>Комментарий:</strong> {{ item.comment }}</li>{% endif %}
+                        {% if item.responsible %}<li><strong>Ответственный:</strong> {{ item.responsible }}</li>{% endif %}
+                        {% if item.quantity %}<li><strong>Кол-во:</strong> {{ item.quantity }}</li>{% endif %}
+                        {% if item.repair_type %}<li><strong>Тип ремонта:</strong> {{ item.repair_type }}</li>{% endif %}
+                      </ul>
+                    </div>
+
+                    <div class="col-md-6">
+                      {% if item.photos and item.photos|length > 0 %}
+                        {% with car_id="carousel-"|add:key %}
+                        <div id="{{ car_id }}" class="carousel slide" data-bs-ride="carousel">
+                          <div class="carousel-inner">
+                            {% for p in item.photos %}
+                              <div class="carousel-item {% if forloop.first %}active{% endif %}">
+                                <img src="{{ p }}" class="d-block w-100 rounded" alt="defect photo {{ forloop.counter }}">
+                              </div>
+                            {% endfor %}
+                          </div>
+
+                          {% if item.photos|length > 1 %}
+                            <button class="carousel-control-prev" type="button" data-bs-target="#{{ car_id }}" data-bs-slide="prev">
+                              <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                              <span class="visually-hidden">Previous</span>
+                            </button>
+                            <button class="carousel-control-next" type="button" data-bs-target="#{{ car_id }}" data-bs-slide="next">
+                              <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                              <span class="visually-hidden">Next</span>
+                            </button>
+                          {% endif %}
+                        </div>
+                        {% endwith %}
+                      {% else %}
+                        <div class="text-muted small">Фото не приложены</div>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  {# ==== БЛОК: Исправление УУД (последняя попытка) + Кнопка действий ==== #}
+                  <section class="uud-section">
+                    {% with uud=item.extra.UUD %}
+                      {% if uud and uud.history %}
+                        {% with last=uud.history|last %}
+                          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                              <span class="badge uud-badge
+                                {% if uud.status == 'checking' %}bg-warning text-dark
+                                {% elif uud.status == 'resolved' %}bg-success
+                                {% elif uud.status == 'not_resolved' %}bg-danger
+                                {% elif uud.status == 'impossible' %}bg-dark
+                                {% else %}bg-secondary{% endif %}">
+                                УУД: {{ uud.status|default:"—" }}
+                              </span>
+                              <span class="uud-fix-meta">
+                                Исправлял: {{ last.fix.by|default:"—" }} • {{ last.fix.at|slice:":10" }}&nbsp;&nbsp;{{ last.fix.at|slice:"11:16" }}
+                              </span>
+                            </div>
+                          </div>
+
+                          {% if last.fix.photos and last.fix.photos|length > 0 %}
+                            {% with fix_car_id="carousel-fix-"|add:forloop.counter|stringformat:"s" %}
+                            <div id="{{ fix_car_id }}" class="carousel slide mb-2 uud-fix-carousel" data-bs-ride="carousel">
+                              <div class="carousel-inner">
+                                {% for fp in last.fix.photos %}
+                                  <div class="carousel-item {% if forloop.first %}active{% endif %}">
+                                    <img src="{{ fp }}" class="d-block w-100 rounded" alt="fix photo {{ forloop.counter }}">
+                                  </div>
+                                {% endfor %}
+                              </div>
+                              {% if last.fix.photos|length > 1 %}
+                                <button class="carousel-control-prev" type="button" data-bs-target="#{{ fix_car_id }}" data-bs-slide="prev">
+                                  <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                  <span class="visually-hidden">Previous</span>
+                                </button>
+                                <button class="carousel-control-next" type="button" data-bs-target="#{{ fix_car_id }}" data-bs-slide="next">
+                                  <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                  <span class="visually-hidden">Next</span>
+                                </button>
+                              {% endif %}
+                            </div>
+                            {% endwith %}
+                          {% else %}
+                            <div class="text-muted small">Фото исправления не приложены</div>
+                          {% endif %}
+
+                          {% if last.decision %}
+                            <div class="d-flex flex-column gap-1 mb-2">
+                              <div>
+                                {% if last.decision.status == 'resolved' %}
+                                  <span class="badge bg-success">Принято: устранено</span>
+                                {% elif last.decision.status == 'not_resolved' %}
+                                  <span class="badge bg-danger">Принято: не устранено</span>
+                                {% elif last.decision.status == 'impossible' %}
+                                  <span class="badge bg-dark">Подтверждено: невозможно устранить</span>
+                                {% else %}
+                                  <span class="badge bg-secondary">Решение</span>
+                                {% endif %}
+                                <span class="uud-fix-meta ms-2">
+                                  Решил: {{ last.decision.by|default:"—" }} • {{ last.decision.at|slice:":10" }}&nbsp;&nbsp;{{ last.decision.at|slice:"11:16" }}
+                                </span>
+                              </div>
+
+                              {% if last.decision.status == 'not_resolved' %}
+                                <div class="small">
+                                  <strong>Причина:</strong> {{ last.decision.comment|default:"—" }}
+                                </div>
+                              {% endif %}
+                            </div>
+                          {% endif %}
+
+                          {% if last.fix.kind == 'impossible' and not last.decision %}
+                            {% if request.user.role == 'controller' or request.user.role == 'master' or request.user.role == 'head_area'%}
+                              <div class="uud-actions" data-uud-impossible
+                                   data-defect-id="{{ item.defect_id }}"
+                                   data-vin="{{ vin|default_if_none:'' }}">
+                                <button type="button" class="btn btn-warning btn-sm uud-impossible-confirm">
+                                  ✅ Подтвердить невозможность
+                                </button>
+                              </div>
+                            {% endif %}
+                          {% endif %}
+                        {% endwith %}
+                      {% endif %}
+
+                      {# Кнопка «Устранить» (видна только uud_controller, если можно ремонтировать) #}
+                      {% if request.user.role == 'uud_controller' %}
+                        {% if not uud or not uud.status or uud.status == 'not_resolved' %}
+                          <div
+                            class="uud-actions mt-2"
+                            data-defect-actions
+                            data-defect-id="{{ item.defect_id }}"
+                            data-defect-name="{{ item.name|default:'' }}"
+                            data-defect-unit="{{ item.unit|default:'' }}"
+                            data-defect-grade="{{ item.grade|default:'' }}"
+                            data-defect-zone="{{ item.zone|default:'' }}"
+                            data-defect-post="{{ item.post|default:'' }}"
+                          >
+                            <button type="button" class="btn btn-outline-success btn-sm uud-fix-open">
+                              ✅ Устранить
+                            </button>
+                          </div>
+                        {% else %}
+                          <div class="uud-actions mt-2">
+                            <span class="badge
+                              {% if uud.status == 'resolved' %}bg-success
+                              {% elif uud.status == 'checking' %}bg-warning text-dark
+                              {% elif uud.status == 'not_resolved' %}bg-danger
+                              {% elif uud.status == 'impossible' %}bg-dark
+                              {% else %}bg-secondary{% endif %}">
+                              Статус УУД: {{ uud.status }}
+                            </span>
+                          </div>
+                        {% endif %}
+                      {% else %}
+                        {% if uud and uud.status %}
+                          <div class="uud-actions mt-2">
+                            <span class="badge
+                              {% if uud.status == 'resolved' %}bg-success
+                              {% elif uud.status == 'checking' %}bg-warning text-dark
+                              {% elif uud.status == 'not_resolved' %}bg-danger
+                              {% elif uud.status == 'impossible' %}bg-dark
+                              {% else %}bg-secondary{% endif %}">
+                              Статус УУД: {{ uud.status }}
+                            </span>
+                          </div>
+                        {% endif %}
+                      {% endif %}
+
+                    {# Кнопки решения для controller/master: показываем ТОЛЬКО при status='checking' и пока нет решения #}
+                      {% if uud.status == 'checking' and not last.decision %}
+                        {% if request.user.role == 'controller' or request.user.role == 'master'  or request.user.role == 'head_area' %}
+                          <div class="uud-actions mt-2"
+                               data-uud-decision
+                               data-defect-id="{{ item.defect_id }}"
+                               data-vin="{{ vin|default_if_none:'' }}">
+                            <div class="btn-group" role="group" aria-label="Решение дефекта">
+                              <button type="button" class="btn btn-success btn-sm uud-decide" data-decision="resolved">
+                                ✅ Устранено
+                              </button>
+                              <button type="button" class="btn btn-danger btn-sm uud-decide" data-decision="not_resolved">
+                                ❌ Не устранено
+                              </button>
+                            </div>
+
+                            <div class="mt-2 w-100" style="display:none;" data-uud-reject-wrap>
+                              <label class="form-label small mb-1">Причина (почему не принято)</label>
+                              <textarea class="form-control" rows="2" placeholder="Опишите, что не так…" data-uud-reject-text></textarea>
+                              <div class="d-flex gap-2 mt-2 mb-5">
+                                <button type="button" class="btn btn-danger btn-sm" data-uud-reject-save>Сохранить</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-uud-reject-cancel>Отмена</button>
+                              </div>
+                            </div>
+                          </div>
+                        {% endif %}
+                      {% endif %}
+                    {% endwith %}
+                  </section>
+                  {# /uud-section #}
+
+                </div> <!-- /.accordion-body -->
+              </div> <!-- /.accordion-collapse -->
+            </div> <!-- /.accordion-item -->
+            {% endwith %}
+            {% endwith %}
+          {% endfor %}
+        </div>
+
+        {% if history_updated_at %}
+          <div class="text-muted small mt-2">Обновлено: {{ history_updated_at|date:"Y-m-d H:i" }}</div>
+        {% endif %}
+      </div>
+
+      <!-- Кнопка Сохранить (пока без изменений функционала) -->
+      <button type="button" id="uudActionBtn" class="btn btn-success w-100" disabled>Загрузка…</button>
+      <small id="uudActionHint" class="text-muted d-block text-center mt-1 mb-5"></small>
+    </form>
+  </div>
+  <br>
+  <br>
+  <br>
+  <br>
+  <br>
+  <br>
+  <br>
+  <br>
+  <br>
+  <br>
+</div>
+
+
+
+<!-- Библиотека сканера -->
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+  /* Ограничиваем влияние стилями в пределах страницы УУД */
+  #uudPageRoot .uud-divider{ margin-top: .75rem !important; margin-bottom: .75rem !important; }
+  #uudPageRoot .uud-section{
+    padding-top: .75rem;
+    margin-top: .25rem;
+    border-top: 1px solid var(--bs-border-color);
+  }
+  #uudPageRoot .uud-actions{
+    display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;
+  }
+  #uudPageRoot .uud-badge{ vertical-align: middle; }
+  #uudPageRoot .uud-fix-meta{ font-size:.875rem; color: var(--bs-secondary-color); }
+
+  /* Кнопки компактнее и ровнее */
+  #uudPageRoot .uud-actions .btn{ min-width: 136px; }
+
+  /* Превью/карусели: одинаковая высота и cover, чтобы карточки не прыгали */
+  #uudPageRoot .carousel img{ object-fit: cover; width:100%; max-height: 280px; }
+  @media (max-width: 576px){
+    #uudPageRoot .carousel img{ max-height: 220px; }
+  }
+
+  /* Подсветка карточек дефектов по статусу */
+#uudPageRoot .accordion-item.uud-status-checking {
+  border-left: 6px solid #ffc107; /* желтый */
+  background-color: #fffbea;
+}
+#uudPageRoot .accordion-item.uud-status-resolved {
+  border-left: 6px solid #198754; /* зеленый */
+  background-color: #e9f7ef;
+}
+#uudPageRoot .accordion-item.uud-status-failed {
+  border-left: 6px solid #dc3545; /* красный */
+  background-color: #fcebea;
+}
+#uudPageRoot .accordion-item.uud-status-impossible {
+  border-left: 6px solid #6c757d; /* серый/тёмный */
+  background-color: #f1f1f1;
+}
+
+</style>
+
+<script>
+  // === QR-сканер ===
+  document.addEventListener("DOMContentLoaded", function () {
+    const qrReaderEl = document.getElementById("qr-reader");
+    const startBtn = document.getElementById("start_qr_scan");
+    const vinInput = document.getElementById("vin_search");
+    const qrScanner = new Html5Qrcode("qr-reader");
+    let qrActive = false;
+
+    function onScanSuccess(decodedText) {
+      if (vinInput) vinInput.value = (decodedText || "").trim().toUpperCase();
+
+      qrReaderEl.style.display = "none";
+      qrScanner.stop().finally(() => {
+        qrActive = false;
+        startBtn.innerText = "📷 Сканировать QR";
+      });
+
+      try { triggerVinSearch && triggerVinSearch(vinInput.value); } catch (_) {}
+    }
+
+    startBtn.addEventListener("click", () => {
+      if (!qrActive) {
+        qrReaderEl.style.display = "block";
+        startBtn.innerText = "✖ Остановить сканирование";
+
+        qrScanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          onScanSuccess
+        ).then(() => {
+          qrActive = true;
+        }).catch(err => {
+          console.error("Ошибка запуска камеры:", err);
+        });
+
+      } else {
+        qrScanner.stop().finally(() => {
+          qrReaderEl.style.display = "none";
+          startBtn.innerText = "📷 Сканировать QR";
+          qrActive = false;
+        });
+      }
+    });
+
+    window.addEventListener("beforeunload", () => {
+      if (qrActive) {
+        try { qrScanner.stop(); } catch(_) {}
+      }
+    });
+  });
+</script>
+
+<script>
+  // === Автоподсказка VIN + вывод трейсинга ===
+  (function(){
+    const vinInput = document.getElementById("vin_search");
+    const vinList  = document.getElementById("vin_list");
+    const clearBtn = document.getElementById("clear_vin_search");
+    const infoBox  = document.getElementById("vehicle_info");
+    if (!vinInput || !vinList) return;
+
+    let debounceTimer = null;
+    function debounce(fn, ms = 200){
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(fn, ms);
+    }
+
+    vinInput.addEventListener("input", () => {
+      const q = vinInput.value.trim();
+      if (clearBtn) clearBtn.style.display = q ? "block" : "none";
+
+      if (!q) {
+        hideList();
+        if (infoBox) infoBox.style.display = "none";
+        return;
+      }
+
+      debounce(() => {
+        fetch(`/supplies/api/search_vin/?q=${encodeURIComponent(q)}`)
+          .then(r => r.ok ? r.json() : Promise.reject(r.status))
+          .then(data => {
+            const items = Array.isArray(data?.results) ? data.results : [];
+            renderList(items);
+          })
+          .catch(err => {
+            console.error("VIN search error:", err);
+            hideList();
+          });
+      }, 200);
+    });
+
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        vinInput.value = "";
+        hideList();
+        if (infoBox) infoBox.style.display = "none";
+        clearBtn.style.display = "none";
+        vinInput.focus();
+      });
+    }
+
+    document.addEventListener("click", (e) => {
+      if (!vinList.contains(e.target) && !vinInput.contains(e.target)) hideList();
+    });
+
+    function renderList(items){
+      vinList.innerHTML = "";
+      if (!items.length) return hideList();
+
+      items.forEach(item => {
+        const li = document.createElement("li");
+        li.className = "list-group-item list-group-item-action";
+        li.innerHTML = `
+          <div class="d-flex justify-content-between">
+            <span>${item.vin || ""}</span>
+            <small class="text-muted">${(item.model || "").trim()}</small>
+          </div>
+        `;
+        li.addEventListener("click", () => {
+          const vin = (item.vin || "").trim().toUpperCase();
+          vinInput.value = vin;
+          showInfo(vin, item);
+          hideList();
+        });
+        vinList.appendChild(li);
+      });
+
+      vinList.style.display = "block";
+    }
+
+    function hideList(){
+      vinList.style.display = "none";
+      vinList.innerHTML = "";
+    }
+
+    function showInfo(vin, item){
+      const vinValue   = document.getElementById("vin_value");
+      const engValue   = document.getElementById("engine_number_value");
+      const modelValue = document.getElementById("model_value");
+      const colorValue = document.getElementById("body_color_value");
+
+      if (vinValue)   vinValue.textContent   = vin || "";
+      if (engValue)   engValue.textContent   = item?.engine_number || "";
+      if (modelValue) modelValue.textContent = item?.model || "";
+      if (colorValue) colorValue.textContent = item?.body_color || "";
+
+      if (infoBox) infoBox.style.display = "block";
+
+      try { triggerVinSearch && triggerVinSearch(vin); } catch(_) {}
+    }
+  })();
+</script>
+
+<script>
+  (function () {
+    const vinInput = document.getElementById("vin_search");
+    const clearBtn = document.getElementById("clear_vin_search");
+    const infoBox  = document.getElementById("vehicle_info");
+    const defects  = document.getElementById("defects_section");
+
+    // ── helper: показать/скрыть блок
+    function show(el) { if (el) el.style.display = ""; }
+    function hide(el) { if (el) el.style.display = "none"; }
+
+    // ── глобальная функция, которую уже зовут обработчики скана/подсказок
+    function triggerVinSearch(vin) {
+      if (!vin) return;
+      vin = (vin || "").trim().toUpperCase();
+      if (!vin) return;
+
+      // Собираем URL текущей страницы с ?vin=... и якорем на секцию дефектов
+      const base   = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      params.set("vin", vin);
+
+      // Небольшой визуальный индикатор перед переходом (по желанию)
+      if (vinInput) vinInput.disabled = true;
+
+      // Переходим на серверный рендер — вьюшка подставит vehicle_info и defect_list
+      window.location.replace(`${base}?${params.toString()}#defects_section`);
+    }
+    window.triggerVinSearch = triggerVinSearch;
+
+    // ── поведение Enter в поле VIN: вместо submit — загрузить инфо/дефекты
+    if (vinInput) {
+      vinInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          triggerVinSearch(vinInput.value);
+        }
+      });
+
+      // отображение/скрытие крестика при вводе
+      vinInput.addEventListener("input", () => {
+        const has = !!vinInput.value.trim();
+        if (clearBtn) clearBtn.style.display = has ? "block" : "none";
+        if (!has) {
+          hide(infoBox);
+          hide(defects);
+        }
+      });
+    }
+
+    // ── кнопка очистки VIN
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        if (vinInput) {
+          vinInput.value = "";
+          vinInput.disabled = false;
+          vinInput.focus();
+        }
+        hide(infoBox);
+        hide(defects);
+        clearBtn.style.display = "none";
+
+        // чистим хэш и параметр vin в адресной строке, не перезагружая
+        const url = new URL(window.location.href);
+        url.hash = "";
+        url.searchParams.delete("vin");
+        window.history.replaceState({}, "", url.toString());
+      });
+    }
+
+    // ── после загрузки: если есть якорь на секцию дефектов — мягко подсветим её
+    function highlightDefects() {
+      if (!defects) return;
+      if (window.location.hash !== "#defects_section") return;
+
+      const cls = "flash-highlight";
+      defects.classList.add(cls);
+      setTimeout(() => defects.classList.remove(cls), 1200);
+
+      // аккуратно скроллим к началу секции (если вдруг браузер не проскроллил)
+      defects.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // добавим стили подсветки (один раз)
+    (function injectFlashStyle(){
+      const id = "flash-highlight-style";
+      if (document.getElementById(id)) return;
+
+      const style = document.createElement("style");
+      style.id = id;
+      style.textContent = `
+        .flash-highlight {
+          box-shadow: 0 0 0 4px rgba(25,135,84,.25);
+          transition: box-shadow .3s ease;
+        }
+      `;
+      document.head.appendChild(style);
+    })();
+
+    // Стартовая инициализация
+    document.addEventListener("DOMContentLoaded", () => {
+      // показать крестик, если vin уже в поле (например, пришли с ?vin=...)
+      if (vinInput && vinInput.value.trim() && clearBtn) {
+        clearBtn.style.display = "block";
+      }
+      // подсветить секцию дефектов, если она есть
+      highlightDefects();
+    });
+  })();
+</script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const acc = document.getElementById('defectsAccordion');
+    if (!acc) return;
+
+    const items = acc.querySelectorAll('.accordion-item');
+
+    items.forEach((item, idx) => {
+      const key    = String(idx + 1);
+      const header = item.querySelector('.accordion-header');
+      const btn    = header?.querySelector('[data-bs-toggle="collapse"]');
+      const body   = item.querySelector('.accordion-collapse');
+
+      if (!btn || !body) return;
+
+      const newAccId      = 'defect-' + key;
+      const newCollapseId = 'collapse-' + newAccId;
+
+      header.id = 'heading-' + newAccId;
+      body.id   = newCollapseId;
+      body.setAttribute('aria-labelledby', header.id);
+      btn.setAttribute('data-bs-target', '#' + newCollapseId);
+      btn.setAttribute('aria-controls', newCollapseId);
+
+      // починим и карусель (если есть)
+      const carousel = item.querySelector('.carousel[id^="carousel-"]');
+      if (carousel) {
+        carousel.id = 'carousel-' + newAccId;
+        const prev = item.querySelector('[data-bs-target^="#carousel-"]');
+        const next = item.querySelectorAll('[data-bs-target^="#carousel-"]')[1];
+        if (prev) prev.setAttribute('data-bs-target', '#' + carousel.id);
+        if (next) next.setAttribute('data-bs-target', '#' + carousel.id);
+      }
+    });
+  });
+</script>
+<script>
+(function(){
+  // ===== URLs (Django reverse) =====
+  const URL_STATE           = "{% url 'assembly:uud_current_state' %}";
+  const URL_US_TO_UUD       = "{% url 'assembly:us_to_uud' %}";
+  const URL_UUD_TO_UUDZONE  = "{% url 'assembly:uud_to_uudzone' %}";
+  const URL_UUDZONE_TO_UUD  = "{% url 'assembly:uudzone_to_uud' %}";
+  const URL_UUD_TO_US       = "{% url 'assembly:uud_to_us' %}";
+
+  // ===== Helpers =====
+  const root   = document.getElementById('uudPageRoot') || document.body;
+  const role   = (root.getAttribute('data-user-role') || '').trim() || 'none';
+  const btn    = document.getElementById('uudActionBtn');
+  const hint   = document.getElementById('uudActionHint');
+  const vinInp = document.getElementById('vin_search');
+
+  function getCSRF() {
+    const name = 'csrftoken';
+    const m = document.cookie.match(new RegExp('(^|;)\\s*' + name + '=([^;]+)'));
+    return m ? decodeURIComponent(m[2]) : '';
+  }
+  function currentVIN(){
+    return (vinInp?.value || (new URL(location.href).searchParams.get('vin') || '')).trim().toUpperCase();
+  }
+  function setBtn(label, {disabled=true, style='success', title=''}={}) {
+    if (!btn) return;
+    btn.textContent = label;
+    btn.className = 'btn w-100 btn-' + style;
+    btn.disabled = !!disabled;
+    if (title) btn.setAttribute('title', title); else btn.removeAttribute('title');
+  }
+  function setHint(text){ if (hint) hint.textContent = text || ''; }
+
+  async function fetchState(vin){
+    if (!vin) return {status:'ok', uud_state:{has_active:false, step:null, status:null}};
+    const url = new URL(URL_STATE, location.origin);
+    url.searchParams.set('vin', vin);
+    const r = await fetch(url.toString(), {credentials:'same-origin'});
+    try { return await r.json(); } catch(_) { return {status:'error'}; }
+  }
+
+  async function postStep(url, vin){
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCSRF(),
+        'Content-Type': 'application/json'
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({ vin })
+    });
+    let data = {};
+    try { data = await r.json(); } catch(_){}
+    if (!r.ok || data.status !== 'ok') {
+      throw new Error(data.message || 'Ошибка операции');
+    }
+    return data;
+  }
+
+  function renderByRoleAndState(role, state, vin){
+    // state: { has_active, step, status }
+    if (!vin) {
+      setBtn('Укажите VIN', {disabled:true, style:'secondary', title:'Введите VIN или отсканируйте QR'});
+      setHint('');
+      return;
+    }
+
+    const has = !!state?.has_active;
+    const step = state?.step || null; // null | step1..4 | done
+
+    // Матрица:
+    // нет активной (null) → controller/master: Отдать на УУД; uud_controller: Не передана на УУД (disabled)
+    // step1 → uud_controller: Забрать в зону УУД; ctrl/master: Машина на УУД (disabled)
+    // step2 → uud_controller: Отдать обратно на линию; ctrl/master: Машина на УУД (disabled)
+    // step3 → ctrl/master: Принять машину с УУД; uud_controller: Ожидает приёмку (disabled)
+    // done → как «нет активной»: начало нового цикла
+
+    if (!has || step === 'done' || step === null) {
+      if (role === 'controller' || role === 'master' || role === 'head_area') {
+        setBtn('Отдать на УУД', {disabled:false, style:'success'});
+        setHint('');
+        btn.dataset.action = 'us_to_uud';
+      } else if (role === 'uud_controller') {
+        setBtn('Не передана на УУД', {disabled:true, style:'secondary', title:'Попросите отправить машину на УУД'});
+        setHint('Машина ещё не отдана на УУД.');
+        btn.dataset.action = 'noop_not_sent';
+      } else {
+        setBtn('Недостаточно прав', {disabled:true, style:'secondary'});
+        setHint('');
+        btn.dataset.action = 'noop_no_rights';
+      }
+      return;
+    }
+
+    if (step === 'step1') {
+      if (role === 'uud_controller') {
+        setBtn('Забрать в зону УУД', {disabled:false, style:'primary'});
+        setHint('');
+        btn.dataset.action = 'uud_to_uudzone';
+      } else {
+        setBtn('Машина на УУД', {disabled:true, style:'secondary', title:'Ожидает действий УУД'});
+        setHint('Ожидает забора в зону УУД.');
+        btn.dataset.action = 'noop_wait_uud';
+      }
+      return;
+    }
+
+    if (step === 'step2') {
+      if (role === 'uud_controller') {
+        setBtn('Отдать обратно на линию', {disabled:false, style:'warning'});
+        setHint('Фиксируется возврат с зоны на УУД.');
+        btn.dataset.action = 'uudzone_to_uud';
+      } else {
+        setBtn('Машина на УУД', {disabled:true, style:'secondary', title:'Ожидает возврата с зоны'});
+        setHint('Ожидает возврата с зоны УУД.');
+        btn.dataset.action = 'noop_wait_return';
+      }
+      return;
+    }
+
+    if (step === 'step3') {
+      if (role === 'controller' || role === 'master' || role === 'head_area') {
+        setBtn('Принять машину с УУД', {disabled:false, style:'success'});
+        setHint('');
+        btn.dataset.action = 'uud_to_us';
+      } else {
+        setBtn('Ожидает приёмку на линии', {disabled:true, style:'secondary'});
+        setHint('Дождитесь приёмки контроллером/мастером.');
+        btn.dataset.action = 'noop_wait_accept';
+      }
+      return;
+    }
+
+    // Любой иной случай (например, необычные данные)
+    setBtn('Недоступно', {disabled:true, style:'secondary'});
+    setHint('');
+    btn.dataset.action = 'noop';
+  }
+
+  async function refreshButton(){
+    setBtn('Загрузка…', {disabled:true, style:'secondary'});
+    setHint('');
+    const vin = currentVIN();
+    try{
+      const data = await fetchState(vin);
+      const state = data?.uud_state || {has_active:false, step:null};
+      renderByRoleAndState(role, state, vin);
+    }catch(_){
+      setBtn('Ошибка связи', {disabled:true, style:'danger'});
+      setHint('Попробуйте обновить страницу.');
+    }
+  }
+
+  async function onActionClick(){
+    const action = btn?.dataset?.action || '';
+    const vin = currentVIN();
+    if (!vin) {
+      alert('Укажите VIN');
+      return;
+    }
+
+    // Заблокированные сценарии с кастомным предупреждением
+    if (action === 'noop_not_sent') {
+      alert('Машина не отдана на УУД. Попросите отправить машину на УУД.');
+      return;
+    }
+    if (action.startsWith('noop')) return;
+
+    let url = null;
+    if (action === 'us_to_uud') url = URL_US_TO_UUD;
+    else if (action === 'uud_to_uudzone') url = URL_UUD_TO_UUDZONE;
+    else if (action === 'uudzone_to_uud') url = URL_UUDZONE_TO_UUD;
+    else if (action === 'uud_to_us') url = URL_UUD_TO_US;
+    else return;
+
+    const originalLabel = btn.textContent;
+    setBtn('Сохраняю…', {disabled:true, style:'secondary'});
+
+    try{
+      const data = await postStep(url, vin);
+      if (data?.message) {
+        // можно заменить на toast
+        console.log(data.message);
+      }
+      // обновить кнопку по новому состоянию
+      await refreshButton();
+    }catch(e){
+      alert(e?.message || 'Ошибка выполнения операции');
+      setBtn(originalLabel, {disabled:false});
+    }
+  }
+
+  // ===== Инициализация =====
+  document.addEventListener('DOMContentLoaded', () => {
+    if (btn) btn.addEventListener('click', onActionClick);
+
+    // первичный рендер кнопки
+    refreshButton();
+
+    // когда VIN меняется (ввод/скан/клик из подсказок) — после перезагрузки URL с ?vin=...
+    // если не перезагружаемся, можно вручную вызвать:
+    if (vinInp) {
+      vinInp.addEventListener('change', refreshButton);
+      vinInp.addEventListener('input', () => {
+        if (!vinInp.value.trim()) refreshButton();
+      });
+    }
+  });
+
+  // Если ваш код меняет VIN через window.triggerVinSearch -> страница перезагрузится с ?vin=...,
+  // после загрузки refreshButton() выполнится и подтянет актуальное состояние.
+})();
+</script>
+<!-- ===== Панель устранения дефекта (нижний offcanvas) ===== -->
+<div class="offcanvas offcanvas-bottom" tabindex="-1" id="uudFixDrawer" data-bs-backdrop="static" style="height: 70vh;">
+  <div class="offcanvas-header justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      {% if request.user.role == 'uud_controller' %}
+      <button type="button" id="uudMarkImpossibleBtn" class="btn btn-outline-dark btn-sm">
+        Невозможно устранить
+      </button>
+      {% endif %}
+      <h5 class="offcanvas-title mb-0">Устранение дефекта</h5>
+    </div>
+    <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body d-flex flex-column gap-3">
+
+    <!-- Инфо по дефекту -->
+    <div class="small text-muted" id="uudFixDefectInfo">
+      <strong id="uudFixDefectTitle">—</strong>
+      <span class="ms-2" id="uudFixDefectMeta"></span>
+    </div>
+
+    <!-- Кнопка камеры + input -->
+    <div>
+      <label class="form-label mb-1">Фото (открывается камера)</label>
+      <input
+        type="file"
+        id="uudFixPhotos"
+        accept="image/*"
+        capture="environment"
+        multiple
+        class="form-control"
+      >
+      <div class="form-text">Можно сделать несколько снимков — они попадут в превью ниже.</div>
+    </div>
+
+    <!-- Карусель превью сделанных снимков -->
+    <div id="uudFixCarouselWrap" style="display:none;">
+      <div id="uudFixCarousel" class="carousel slide">
+        <div class="carousel-inner" id="uudFixCarouselInner"></div>
+        <button class="carousel-control-prev" type="button" data-bs-target="#uudFixCarousel" data-bs-slide="prev">
+          <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+          <span class="visually-hidden">Prev</span>
+        </button>
+        <button class="carousel-control-next" type="button" data-bs-target="#uudFixCarousel" data-bs-slide="next">
+          <span class="carousel-control-next-icon" aria-hidden="true"></span>
+          <span class="visually-hidden">Next</span>
+        </button>
+      </div>
+      <div class="small text-muted mt-1">Тапните по корзине на слайде, чтобы убрать фото из отправки.</div>
+    </div>
+
+    <!-- Комментарий -->
+    <div>
+      <label class="form-label mb-1">Комментарий</label>
+      <textarea id="uudFixComment" class="form-control" rows="3" placeholder="Опишите, что было сделано…"></textarea>
+    </div>
+
+    <!-- Действия -->
+    <div class="mt-auto d-grid gap-2">
+      <button type="button" id="uudFixSaveBtn" class="btn btn-success">Сохранить и отправить на проверку</button>
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Отмена</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  // ===== URL-ы API =====
+  const URL_UUD_DEFECT_SUBMIT = "{% url 'assembly:uud_defect_submit_fix' %}";
+  const URL_UUD_DEFECT_INFO   = "{% url 'assembly:uud_defect_info' %}";
+  const URL_UUD_DEFECT_IMPOSSIBLE = "{% url 'assembly:uud_defect_mark_impossible' %}";
+
+  // ===== Элементы =====
+  const drawerEl   = document.getElementById('uudFixDrawer');
+  const photosInp  = document.getElementById('uudFixPhotos');
+  const commentEl  = document.getElementById('uudFixComment');
+  const saveBtn    = document.getElementById('uudFixSaveBtn');
+  const infoTitle  = document.getElementById('uudFixDefectTitle');
+  const infoMeta   = document.getElementById('uudFixDefectMeta');
+  const carWrap    = document.getElementById('uudFixCarouselWrap');
+  const car        = document.getElementById('uudFixCarousel');
+  const carInner   = document.getElementById('uudFixCarouselInner');
+
+  let offcanvas = null;
+  let currentDefectId = null;
+  let currentVIN = null;
+
+  // Будем хранить выбранные файлы локально (FileList заменить нельзя, поэтому копия)
+  let chosenFiles = [];     // массив File
+  let previewURLs = [];     // массив ObjectURL для очистки
+
+  function getCSRF() {
+    const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[2]) : '';
+  }
+  function pageVIN(){
+    // берём VIN из поля (он у тебя всегда синхронизирован с ?vin)
+    const inp = document.getElementById('vin_search');
+    return (inp?.value || '').trim().toUpperCase();
+  }
+
+  // ==== ОТКРЫТИЕ ПАНЕЛИ ====
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.uud-fix-open');
+    if (!btn) return;
+
+    const actions = btn.closest('[data-defect-actions]');
+    if (!actions) return;
+
+    currentDefectId = actions.getAttribute('data-defect-id');
+    currentVIN      = pageVIN();
+
+    // Заполняем заголовок/мету
+    const name  = actions.getAttribute('data-defect-name') || '—';
+    const unit  = actions.getAttribute('data-defect-unit') || '';
+    const grade = actions.getAttribute('data-defect-grade') || '';
+    const zone  = actions.getAttribute('data-defect-zone') || '';
+    const post  = actions.getAttribute('data-defect-post') || '';
+
+    infoTitle.textContent = `${name}`;
+    infoMeta.textContent  = [unit, grade ? `грейд ${grade}` : '', zone || '', post || ''].filter(Boolean).join(' • ');
+
+    // Сброс состояния
+    resetFilesPreview();
+    commentEl.value = '';
+
+    // Показ offcanvas
+    offcanvas = offcanvas || new bootstrap.Offcanvas(drawerEl);
+    offcanvas.show();
+  });
+
+  // ==== ПРИКРЕПЛЕНИЕ ФОТО ====
+  photosInp?.addEventListener('change', () => {
+    const files = Array.from(photosInp.files || []);
+    if (!files.length) return;
+
+    // добавляем к существующим
+    chosenFiles.push(...files);
+    renderCarousel();
+    // очищаем input, чтобы можно было снова открыть камеру
+    photosInp.value = '';
+  });
+
+  // ==== РЕНДЕР КАРУСЕЛИ ====
+  function renderCarousel(){
+    // очистим прежние objectURL
+    previewURLs.forEach(u => URL.revokeObjectURL(u));
+    previewURLs = [];
+
+    carInner.innerHTML = '';
+    if (!chosenFiles.length){
+      carWrap.style.display = 'none';
+      return;
+    }
+    chosenFiles.forEach((file, idx) => {
+      const url = URL.createObjectURL(file);
+      previewURLs.push(url);
+
+      const item = document.createElement('div');
+      item.className = 'carousel-item' + (idx === 0 ? ' active' : '');
+      item.innerHTML = `
+        <div class="position-relative">
+          <img src="${url}" class="d-block w-100 rounded" alt="photo ${idx+1}">
+          <button type="button" class="btn btn-light btn-sm position-absolute top-0 end-0 m-2 uud-del-photo" data-index="${idx}" title="Убрать фото">
+            🗑
+          </button>
+        </div>
+      `;
+      carInner.appendChild(item);
+    });
+
+    carWrap.style.display = '';
+  }
+
+  // удаление фото из набора
+  carInner?.addEventListener('click', (e) => {
+    const del = e.target.closest('.uud-del-photo');
+    if (!del) return;
+    const idx = Number(del.getAttribute('data-index') || -1);
+    if (idx < 0) return;
+    chosenFiles.splice(idx, 1);
+    renderCarousel();
+  });
+
+  // ==== СОХРАНЕНИЕ ====
+  saveBtn?.addEventListener('click', async () => {
+    if (!currentVIN || !currentDefectId) {
+      alert('Не выбран VIN или дефект.');
+      return;
+    }
+
+    // формируем payload
+    const fd = new FormData();
+    fd.append('vin', currentVIN);
+    fd.append('defect_id', currentDefectId);
+    if (commentEl.value.trim()) fd.append('comment', commentEl.value.trim());
+    chosenFiles.forEach(f => fd.append('photos', f, f.name || 'photo.jpg'));
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Сохраняю…';
+
+    try{
+      const r = await fetch(URL_UUD_DEFECT_SUBMIT, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRFToken': getCSRF() },
+        body: fd
+      });
+      const data = await r.json().catch(()=>({}));
+      if (!r.ok || data.status !== 'ok') {
+        throw new Error(data.message || 'Ошибка сохранения');
+      }
+
+      // успех: закрываем панель, подсвечиваем карточку, можно обновить бейдж статуса
+      bootstrap.Offcanvas.getInstance(drawerEl)?.hide();
+      toastOk('Отправлено на проверку');
+
+      // Обновим коротко UI в карточке (бейдж статус = checking)
+      const actions = document.querySelector(`[data-defect-actions][data-defect-id="${CSS.escape(currentDefectId)}"]`);
+      if (actions) {
+        actions.innerHTML = `<span class="badge bg-warning text-dark">Статус УУД: checking</span>`;
+      }
+
+    }catch(e){
+      alert(e?.message || 'Не удалось сохранить');
+    }finally{
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Сохранить и отправить на проверку';
+    }
+  });
+
+  const impossibleBtn = document.getElementById('uudMarkImpossibleBtn');
+  impossibleBtn?.addEventListener('click', async () => {
+    if (!currentVIN || !currentDefectId) {
+      alert('Не выбран VIN или дефект.');
+      return;
+    }
+    if (!confirm('Вы точно хотите сохранить этот дефект как невозможный к исправлению?')) return;
+
+    const fd = new FormData();
+    fd.append('vin', currentVIN);
+    fd.append('defect_id', currentDefectId);
+
+    const comment = (commentEl?.value || '').trim();
+    if (comment) fd.append('comment', comment);
+
+    // приложим те же фото, что и в обычном сохранении
+    chosenFiles.forEach(f => fd.append('photos', f, f.name || 'photo.jpg'));
+
+    const originalLabel = impossibleBtn.textContent;
+    impossibleBtn.disabled = true;
+    impossibleBtn.textContent = 'Сохраняю…';
+
+    try{
+      const r = await fetch(URL_UUD_DEFECT_IMPOSSIBLE, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRFToken': getCSRF() },
+        body: fd
+      });
+      const data = await r.json().catch(()=>({}));
+      if (!r.ok || data.status !== 'ok') {
+        throw new Error(data.message || 'Ошибка сохранения');
+      }
+
+      // Закрываем панель и обновляем бейдж
+      bootstrap.Offcanvas.getInstance(drawerEl)?.hide();
+      toastOk('Отмечено: невозможно устранить');
+
+      const actions = document.querySelector(`[data-defect-actions][data-defect-id="${CSS.escape(currentDefectId)}"]`);
+      if (actions) {
+        actions.innerHTML = `<span class="badge bg-dark">Статус УУД: impossible</span>`;
+      }
+    }catch(e){
+      alert(e?.message || 'Не удалось сохранить');
+    }finally{
+      impossibleBtn.disabled = false;
+      impossibleBtn.textContent = originalLabel;
+    }
+  });
+
+  // ==== Сброс при закрытии ====
+  drawerEl?.addEventListener('hidden.bs.offcanvas', () => {
+    resetFilesPreview();
+    commentEl.value = '';
+    currentDefectId = null;
+  });
+
+  function resetFilesPreview(){
+    chosenFiles = [];
+    previewURLs.forEach(u => URL.revokeObjectURL(u));
+    previewURLs = [];
+    carInner.innerHTML = '';
+    carWrap.style.display = 'none';
+    if (photosInp) photosInp.value = '';
+  }
+
+  // простейший тост (можно заменить на твой)
+  function toastOk(text){
+    try{
+      const el = document.createElement('div');
+      el.className = 'position-fixed bottom-0 start-50 translate-middle-x mb-3 px-3 py-2 text-bg-success rounded shadow';
+      el.style.zIndex = 1080;
+      el.textContent = text || 'Готово';
+      document.body.appendChild(el);
+      setTimeout(()=> el.remove(), 1600);
+    }catch(_){}
+  }
+})();
+</script>
+<script>
+(function(){
+  const URL_UUD_DEFECT_DECIDE = "{% url 'assembly:uud_defect_decide' %}";
+
+  function getCSRF(){
+    const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[2]) : '';
+  }
+
+  // Делегирование на контейнер карточек дефектов
+  document.addEventListener('click', async (e) => {
+    const decideBtn = e.target.closest('.uud-decide');
+    if (!decideBtn) return;
+
+    const decision = decideBtn.getAttribute('data-decision'); // "resolved" | "not_resolved"
+    const wrap = decideBtn.closest('[data-uud-decision]');
+    if (!wrap) return;
+
+    const vin = wrap.getAttribute('data-vin') || '';
+    const defectId = wrap.getAttribute('data-defect-id') || '';
+    if (!vin || !defectId) {
+      alert('VIN или Defect ID не определены.');
+      return;
+    }
+
+    // если "не устранено" — раскрываем поле причины (первый клик)
+    const rejectWrap = wrap.querySelector('[data-uud-reject-wrap]');
+    const rejectText = wrap.querySelector('[data-uud-reject-text]');
+
+    if (decision === 'not_resolved') {
+      // если панель причины ещё скрыта — просто показать и выйти
+      if (rejectWrap && rejectWrap.style.display === 'none') {
+        rejectWrap.style.display = '';
+        return;
+      }
+    }
+
+    // для "resolved" отправляем сразу
+    if (decision === 'resolved') {
+      return sendDecision({ vin, defectId, decision, wrap });
+    }
+  });
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.uud-impossible-confirm');
+    if (!btn) return;
+
+    const wrap = btn.closest('[data-uud-impossible]');
+    if (!wrap) return;
+
+    const vin = (wrap.getAttribute('data-vin') || '').trim().toUpperCase();
+    const defectId = wrap.getAttribute('data-defect-id') || '';
+    if (!vin || !defectId) {
+      alert('VIN или Defect ID не определены.');
+      return;
+    }
+
+    await sendDecision({ vin, defectId, decision: 'impossible', wrap });
+  });
+
+  // Клик "Сохранить" в блоке причины
+  document.addEventListener('click', async (e) => {
+    const save = e.target.closest('[data-uud-reject-save]');
+    if (!save) return;
+
+    const wrap = save.closest('[data-uud-decision]');
+    const vin = wrap.getAttribute('data-vin') || '';
+    const defectId = wrap.getAttribute('data-defect-id') || '';
+    const textarea = wrap.querySelector('[data-uud-reject-text]');
+    const comment = (textarea?.value || '').trim();
+
+    if (!comment) {
+      alert('Укажите причину отказа.');
+      return;
+    }
+
+    await sendDecision({ vin, defectId, decision: 'not_resolved', comment, wrap });
+  });
+
+  // Клик "Отмена" в блоке причины
+  document.addEventListener('click', (e) => {
+    const cancel = e.target.closest('[data-uud-reject-cancel]');
+    if (!cancel) return;
+    const rejectWrap = cancel.closest('[data-uud-reject-wrap]');
+    const ta = rejectWrap?.querySelector('[data-uud-reject-text]');
+    if (ta) ta.value = '';
+    if (rejectWrap) rejectWrap.style.display = 'none';
+  });
+
+  async function sendDecision({ vin, defectId, decision, comment = '', wrap }){
+    try{
+      // дизейблим кнопки на время запроса
+      const buttons = wrap.querySelectorAll('.uud-decide, [data-uud-reject-save]');
+      buttons.forEach(b => b.disabled = true);
+
+      const body = new FormData();
+      body.append('vin', vin);
+      body.append('defect_id', defectId);
+      body.append('decision', decision);
+      if (comment) body.append('comment', comment);
+
+      const r = await fetch(URL_UUD_DEFECT_DECIDE, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRFToken': getCSRF() },
+        body
+      });
+      const data = await r.json().catch(()=>({}));
+      if (!r.ok || data.status !== 'ok') {
+        throw new Error(data.message || 'Ошибка сохранения решения');
+      }
+
+      // Обновляем UI: прячем блок кнопок, показываем бейдж итогового статуса
+      const container = wrap.closest('.accordion-item') || wrap.parentElement;
+      if (container) {
+        // Обновить бейдж статуса сверху (если есть «actions» секция из прошлого шага)
+        const actions = container.querySelector('[data-defect-actions]');
+        if (actions) {
+          const st = data?.UUD?.status || decision;
+          const cls =
+          st === 'resolved' ? 'bg-success' :
+          st === 'not_resolved' ? 'bg-danger' :
+          st === 'impossible' ? 'bg-dark' :
+          'bg-warning text-dark';
+
+        actions.innerHTML = `<span class="badge ${cls}">Статус УУД: ${st}</span>`;
+        }
+      }
+
+      // Внутри текущего блока решений меняем на «итог»
+      const statusBadge = document.createElement('div');
+      statusBadge.className = 'mt-2';
+      let badgeCls = 'bg-secondary';
+      let label = 'Решение';
+
+      if (decision === 'resolved') {
+        badgeCls = 'bg-success'; label = 'Решение: устранено';
+      } else if (decision === 'not_resolved') {
+        badgeCls = 'bg-danger'; label = 'Решение: не устранено';
+      } else if (decision === 'impossible') {
+        badgeCls = 'bg-dark'; label = 'Подтверждено: невозможно устранить';
+      }
+
+      statusBadge.innerHTML = `<span class="badge ${badgeCls}">${label}</span>`;
+      wrap.replaceWith(statusBadge);
+
+      // небольшой тост
+      try{
+        const el = document.createElement('div');
+        el.className = 'position-fixed bottom-0 start-50 translate-middle-x mb-3 px-3 py-2 text-bg-success rounded shadow';
+        el.style.zIndex = 1080;
+        el.textContent =
+          decision === 'resolved' ? 'Принято: устранено' :
+          decision === 'not_resolved' ? 'Зафиксировано: не устранено' :
+          'Подтверждено: невозможно устранить';
+        document.body.appendChild(el);
+        setTimeout(()=> el.remove(), 1600);
+      }catch(_){}
+
+    }catch(e){
+      alert(e?.message || 'Ошибка приема решения');
+    }finally{
+      const buttons = wrap.querySelectorAll('.uud-decide, [data-uud-reject-save]');
+      buttons.forEach(b => b.disabled = false);
+    }
+  }
+})();
+</script>
+
+{% endblock %}

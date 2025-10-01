@@ -1,0 +1,874 @@
+{% extends "users/base.html" %}
+
+{% block title %}Пост момента затяжки{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Пост момента затяжки</h2>
+
+    {% if messages %}
+        <div class="alert alert-success">
+            {% for message in messages %}
+                {{ message }}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <!-- Поиск по VIN -->
+<!-- 🔍 Поиск по VIN -->
+        <div style="position: relative;">
+            <input type="text" id="vin_search" name="vin_number"
+                   class="form-control pe-5"
+                   placeholder="Введите VIN..."
+                   style="position: relative; z-index: 2;">
+
+            <!-- ❌ Кнопка очистки -->
+            <span id="clear_vin_search" style="
+                position: absolute;
+                right: 15px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 20px;
+                color: red;
+                cursor: pointer;
+                display: none;
+                z-index: 10;
+            ">❌</span>
+
+            <!-- 📋 Список VIN (создаётся динамически через JS как ul, будет позиционироваться поверх input) -->
+        </div>
+
+        <!-- 📷 Сканер QR -->
+        <button type="button" id="start_qr_scan" class="btn btn-primary mt-2">📷 Сканировать QR</button>
+        <div id="qr-reader" style="width: 300px; display: none;"></div>
+        <button type="button" id="stop_qr_scan" class="btn btn-danger mt-2" style="display: none;">✖ Остановить сканирование</button>
+
+        <!-- Данные о VIN -->
+        <div id="trace_data_container" class="mb-3 p-3 border rounded" style="display: none;">
+            <h5>Данные по VIN</h5>
+            <p><strong>VIN:</strong> <span id="vin_value"></span></p>
+            <p><strong>Номер двигателя:</strong> <span id="engine_number_value"></span></p>
+            <p><strong>Модель:</strong> <span id="model_value"></span></p>
+            <p><strong>Цвет кузова:</strong> <span id="body_color_value"></span></p>
+            <p><strong>Тип привода:</strong> <span id="drive_type_value"></span></p>
+        </div>
+        <input type="hidden" name="modification" id="modification_input">
+
+        <!-- Выбор узла/детали -->
+        <div class="mb-3">
+            <label for="assembly_part_search" class="form-label">Узел / Деталь</label>
+            <input type="text" id="assembly_part_search" class="form-control" placeholder="Введите название узла...">
+            <ul id="assembly_part_list" class="list-group mt-2" style="display: none;"></ul>
+        </div>
+        <input type="hidden" name="assembly_part" id="assembly_part_input">
+        <!-- Данные по узлу -->
+        <div id="part_data_container" class="mb-3 p-3 border rounded" style="display: none;">
+            <h5>Данные по узлу</h5>
+            <p><strong>Размер:</strong> <span id="part_size"></span></p>
+            <p><strong>Количество точек затяжки:</strong> <span id="part_quantity"></span></p>
+            <p><strong>Рекомендуемый момент затяжки:</strong> <span id="torque_range"></span> Н·м</p>
+        </div>
+
+        <!-- Поля для внесения момента затяжки -->
+        <div id="torque_input_container" class="mb-3 p-3 border rounded" style="display: none;">
+            <h5>Внесите момент затяжки</h5>
+            <div id="torque_inputs"></div>
+        </div>
+
+        <!-- Выбор наличия дефекта -->
+        <div class="mb-3">
+            <label class="form-label">Есть ли дефект?</label>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="has_defect" id="defect_no" value="no" checked>
+                <label class="form-check-label" for="defect_no">Нет дефекта</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="has_defect" id="defect_yes" value="yes">
+                <label class="form-check-label" for="defect_yes">Есть дефект</label>
+            </div>
+        </div>
+
+
+        <!-- 📌 Контейнер для дефектов -->
+        <div id="defect_container" class="mt-3" style="display: none;">
+            <h5>Список дефектов:</h5>
+            <div id="defect_list"></div> <!-- Здесь будут добавляться формы дефектов -->
+
+            <!-- Кнопка добавления дефекта -->
+            <button type="button" class="btn btn-primary mt-2" id="add_defect_btn">➕ Добавить дефект</button>
+
+            <!-- 📌 Шаблон формы дефекта (скрыт, копируется при добавлении) -->
+            <div id="defect_template" class="defect-form border p-3 mt-2 rounded" style="display: none;">
+                <h6 class="defect-title">Дефект 1</h6>
+
+                <!-- Выбор типа дефекта -->
+                <div class="mb-3">
+                    <label class="form-label">Тип дефекта</label>
+                    <select class="form-control defect-type" name="defect_type[]">
+                        <option value="">Выберите тип дефекта...</option>
+                        <option value="undertorque">Недотяг</option>
+                        <option value="overtorque">Перетяг</option>
+                        <option value="thread_stripped">Резьба сорвана</option>
+                        <option value="missing">Отсутствует</option>
+                    </select>
+                </div>
+
+                <!-- Количество дефектов -->
+                <div class="mb-3">
+                    <label class="form-label">Количество</label>
+                    <input type="number" class="form-control defect-quantity" name="defect_quantity[]" min="1" value="1">
+                </div>
+
+                <!-- Фото дефекта -->
+                <div class="mb-3">
+                    <label class="form-label">Фото дефекта</label>
+                    <input type="file" class="form-control defect-photo" name="defect_photos[]" multiple>
+                    <button type="button" class="btn btn-primary open-camera-btn">📷 Сделать фото</button>
+                    <div class="defect-photo-preview d-flex flex-wrap mt-2 gap-2"></div>
+                </div>
+
+                <!-- Кнопка удаления дефекта -->
+                <button type="button" class="btn btn-danger remove-defect-btn">❌ Удалить дефект</button>
+            </div>
+        </div>
+        <input type="hidden" name="torque_values" id="torque_values_input">
+
+        <!-- Кнопка отправки -->
+        <button type="submit" class="btn btn-success w-100 mb-5">✅ Завершить и сохранить</button>
+    </form>
+</div>
+
+<!--<script>-->
+<!--    function confirmSave() {-->
+<!--        if (confirm("Вы уверены, что хотите сохранить эту запись?")) {-->
+<!--            document.querySelector('form').submit();-->
+<!--        }-->
+<!--    }-->
+<!--</script>-->
+
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    setupVinSearch();
+    setupQrScanner();
+});
+
+
+function setupVinSearch() {
+    let vinInput = document.getElementById("vin_search");
+    let clearBtn = document.getElementById("clear_vin_search");
+
+    // Создание списка VIN
+    let vinList = document.createElement("ul");
+    vinList.classList.add("list-group", "mt-2");
+    vinList.style.position = "absolute";
+    vinList.style.zIndex = "3";  // ✅ список под ❌
+    vinList.style.backgroundColor = "white";
+    vinList.style.width = "100%";
+    vinList.style.maxHeight = "200px";
+    vinList.style.overflowY = "auto";
+    vinList.style.border = "0";
+    vinList.style.borderTop = "none";
+    vinList.style.marginTop = "0";
+    vinInput.parentNode.appendChild(vinList);
+
+    let traceDataContainer = document.getElementById("trace_data_container");
+    let vinValue = document.getElementById("vin_value");
+    let engineNumberValue = document.getElementById("engine_number_value");
+    let modelValue = document.getElementById("model_value");
+    let bodyColorValue = document.getElementById("body_color_value");
+    let driveTypeValue = document.getElementById("drive_type_value");
+
+    vinInput.addEventListener("input", function () {
+        let query = vinInput.value.trim().toUpperCase();
+
+        // ✅ Показываем или скрываем ❌
+        clearBtn.style.display = query ? "block" : "none";
+
+        if (!query) {
+            vinList.style.display = "none";
+            return;
+        }
+
+        fetch(`/assembly/api/vin-lookup/?q=${query}`)
+            .then(response => response.json())
+            .then(data => {
+                vinList.innerHTML = "";
+                if (!data.results || data.results.length === 0) {
+                    vinList.style.display = "none";
+                    return;
+                }
+
+                data.results.forEach(item => {
+                    let li = document.createElement("li");
+                    li.classList.add("list-group-item", "list-group-item-action");
+                    li.textContent = item.vin;
+                    li.addEventListener("click", function () {
+                        vinInput.value = item.vin;
+                        vinList.style.display = "none";
+                        clearBtn.style.display = "block";  // ✅ показываем ❌ при выборе
+
+                        vinValue.textContent = item.vin;
+                        engineNumberValue.textContent = item.engine_number;
+                        modelValue.textContent = item.model;
+                        bodyColorValue.textContent = item.body_color;
+                        driveTypeValue.textContent = item.drive_type;
+                        document.getElementById("modification_input").value = item.drive_type.replace(/\s+/g, '');
+
+                        traceDataContainer.style.display = "block";
+                    });
+
+                    vinList.appendChild(li);
+                });
+
+                vinList.style.display = "block";
+            })
+            .catch(error => console.error("❌ Ошибка при запросе VIN:", error));
+    });
+
+    // Скрыть список при клике вне
+    document.addEventListener("click", function (event) {
+        if (!vinInput.contains(event.target) && !vinList.contains(event.target)) {
+            vinList.style.display = "none";
+        }
+    });
+
+    // Обработчик кнопки ❌
+    clearBtn.addEventListener("click", function () {
+        vinInput.value = "";
+        clearBtn.style.display = "none";
+        vinList.style.display = "none";
+        traceDataContainer.style.display = "none";
+    });
+}
+
+
+/* ------------------- */
+/* 📷 Функция сканирования QR-кода VIN */
+/* ------------------- */
+function setupQrScanner() {
+    const qrReaderContainer = document.getElementById("qr-reader");
+    const scanBtn = document.getElementById("start_qr_scan");
+    const vinInput = document.getElementById("vin_search");
+    const clearButton = document.getElementById("clear_vin_search");
+
+    let qrScanner = new Html5Qrcode("qr-reader");
+    let qrActive = false;
+
+    function onScanSuccess(decodedText, decodedResult) {
+        vinInput.value = decodedText;
+        if (clearButton) clearButton.style.display = "block";
+        qrReaderContainer.style.display = "none";
+
+        qrScanner.stop().then(() => {
+            console.log("📸 Сканирование завершено");
+            scanBtn.innerText = "📷 Сканировать QR";
+            qrActive = false;
+        }).catch(err => {
+            console.error("❌ Ошибка при остановке сканера:", err);
+        });
+
+        triggerVinSearch(decodedText);
+    }
+
+    scanBtn.addEventListener("click", function () {
+        if (!qrActive) {
+            // 🔹 Запуск камеры
+            qrReaderContainer.style.display = "block";
+            scanBtn.innerText = "✖ Остановить сканирование";
+
+            qrScanner.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                onScanSuccess
+            ).then(() => {
+                qrActive = true;
+            }).catch(err => {
+                console.error("❌ Не удалось запустить QR-сканер:", err);
+                scanBtn.innerText = "📷 Сканировать QR";
+                qrReaderContainer.style.display = "none";
+                qrActive = false;
+            });
+
+        } else {
+            // 🔹 Остановка камеры
+            qrScanner.stop().then(() => {
+                qrReaderContainer.style.display = "none";
+                scanBtn.innerText = "📷 Сканировать QR";
+                qrActive = false;
+            }).catch(err => {
+                console.error("❌ Ошибка остановки сканера:", err);
+            });
+        }
+    });
+}
+
+
+
+/* ------------------- */
+/* 🔍 Функция триггера поиска VIN после сканирования */
+/* ------------------- */
+function triggerVinSearch(vin) {
+    let traceDataContainer = document.getElementById("trace_data_container");
+
+    let vinValue = document.getElementById("vin_value");
+    let engineNumberValue = document.getElementById("engine_number_value");
+    let modelValue = document.getElementById("model_value");
+    let bodyColorValue = document.getElementById("body_color_value");
+    let driveTypeValue = document.getElementById("drive_type_value");
+
+    fetch(`/assembly/api/vin-lookup/?q=${vin}`)
+        .then(response => response.json())
+        .then(data => {
+            if (!data.results || data.results.length === 0) {
+                traceDataContainer.style.display = "none";
+                return;
+            }
+
+            let vinData = data.results[0];
+
+            vinValue.textContent = vinData.vin;
+            engineNumberValue.textContent = vinData.engine_number;
+            modelValue.textContent = vinData.model;
+            bodyColorValue.textContent = vinData.body_color;
+            driveTypeValue.textContent = vinData.drive_type;
+            document.getElementById("modification_input").value = vinData.drive_type.replace(/\s+/g, '');
+
+            traceDataContainer.style.display = "block";
+        })
+        .catch(error => console.error("❌ Ошибка загрузки данных VIN:", error));
+}
+
+
+document.addEventListener("DOMContentLoaded", function () {
+    setupAssemblyPartSearch();
+});
+
+
+/* ------------------- */
+/* 🔹 Поиск узла/детали с загрузкой данных по узлу */
+/* ------------------- */
+function setupAssemblyPartSearch() {
+    let assemblyPartInput = document.getElementById("assembly_part_search");
+    let assemblyPartList = document.createElement("ul");
+    assemblyPartList.classList.add("list-group", "mt-2");
+    assemblyPartList.style.position = "absolute";
+    assemblyPartList.style.width = "100%";
+    assemblyPartList.style.display = "none";
+    assemblyPartInput.parentNode.appendChild(assemblyPartList);
+
+    let driveTypeElement = document.getElementById("drive_type_value");
+
+    assemblyPartInput.addEventListener("input", function () {
+        let query = assemblyPartInput.value.trim().toLowerCase();
+        let driveType = driveTypeElement.textContent.trim().replace(/\s+/g, ""); // Убираем пробелы (например, "4 WD" → "4WD")
+
+        if (!query || !driveType) {
+            assemblyPartList.style.display = "none";
+            return;
+        }
+
+        console.log(`🔍 Поиск узла: ${query}, Привод: ${driveType}`);
+
+        fetch(`/assembly/api/assembly-parts/?drive_type=${driveType}`)
+            .then(response => response.json())
+            .then(data => {
+                assemblyPartList.innerHTML = "";
+                if (!data.length) {
+                    assemblyPartList.style.display = "none";
+                    return;
+                }
+
+                let filteredParts = data.filter(part =>
+                    part.name.toLowerCase().includes(query) &&
+                    part.modification.replace(/\s+/g, "") === driveType // Сравниваем без пробелов
+                );
+
+                if (!filteredParts.length) {
+                    assemblyPartList.style.display = "none";
+                    return;
+                }
+
+                // Ограничиваем вывод до 6 деталей
+                filteredParts.slice(0, 6).forEach(part => {
+                    let li = document.createElement("li");
+                    li.classList.add("list-group-item", "list-group-item-action");
+                    li.textContent = `${part.name} (${part.modification})`;
+                    li.setAttribute("data-id", part.id);
+
+                    li.addEventListener("click", function () {
+                        assemblyPartInput.value = `${part.name} (${part.modification})`;
+                        assemblyPartList.style.display = "none";
+                        document.getElementById("assembly_part_input").value = part.id;
+                        console.log("📌 Выбран узел:", part.name, "| Модификация:", part.modification, "| ID:", part.id);
+
+                        // Загружаем данные по узлу (размер, момент затяжки)
+                        loadPartDetails(part.id);
+                    });
+
+                    assemblyPartList.appendChild(li);
+                });
+
+                assemblyPartList.style.display = "block";
+            })
+            .catch(error => console.error("❌ Ошибка загрузки узлов/деталей:", error));
+    });
+
+    document.addEventListener("click", function (event) {
+        if (!assemblyPartInput.contains(event.target) && !assemblyPartList.contains(event.target)) {
+            assemblyPartList.style.display = "none";
+        }
+    });
+}
+
+
+/* ------------------- */
+/* 🔄 Функция загрузки данных детали и создания полей ввода момента затяжки */
+/* ------------------- */
+function loadPartDetails(partId) {
+    let partDataContainer = document.getElementById("part_data_container");
+    let torqueInputContainer = document.getElementById("torque_input_container");
+    let torqueInputs = document.getElementById("torque_inputs");
+
+    if (!partId) {
+        console.warn("⚠️ Ошибка: узел не выбран.");
+        return;
+    }
+
+    console.log(`🔄 Запрашиваем данные по детали ID: ${partId}`);
+
+    fetch(`/assembly/api/part-details/?part_id=${partId}`)
+        .then(response => response.json())
+        .then(data => {
+            console.log("✅ Данные по детали:", data);
+
+            if (data.error) {
+                console.error("❌ Ошибка: Деталь не найдена.");
+                return;
+            }
+
+            // ✅ Отображаем данные детали
+            partDataContainer.style.display = "block";
+            document.getElementById("part_size").textContent = data.size;
+            document.getElementById("part_quantity").textContent = `${data.min_quantity} – ${data.max_quantity}`;
+            document.getElementById("torque_range").textContent = `${data.min_torque} – ${data.max_torque} Н·м`;
+
+            // ✅ Создаём поля для момента затяжки (с валидацией цветов)
+            torqueInputs.innerHTML = "";
+            torqueInputContainer.style.display = "block";
+
+            let minTorque = data.min_torque || 10;
+            let maxTorque = data.max_torque || 100;
+            window.requiredMinTorqueCount = data.min_quantity || 1;
+            let maxQuantity = data.max_quantity || 1; // Количество болтов
+
+            for (let i = 1; i <= maxQuantity; i++) {
+                let inputGroup = document.createElement("div");
+                inputGroup.classList.add("input-group", "mb-2");
+
+                let input = document.createElement("input");
+                input.type = "number";
+                input.classList.add("form-control", "torque-value");
+                input.setAttribute("id", `torque_value_${i}`);
+                input.setAttribute("name", `torque_value_${i}`);
+                input.setAttribute("step", "0.1");
+                input.setAttribute("placeholder", `Введите момент затяжки (${i})`);
+
+                // ✅ Валидация при вводе
+                input.addEventListener("input", function () {
+                    validateTorqueInput(input, minTorque, maxTorque);
+                });
+
+                inputGroup.appendChild(input);
+                torqueInputs.appendChild(inputGroup);
+            }
+        })
+        .catch(error => console.error("❌ Ошибка загрузки данных детали:", error));
+}
+
+
+/* ------------------- */
+/* ✅ Валидация момента затяжки (цветовая индикация) */
+/* ------------------- */
+function validateTorqueInput(inputElement, minTorque, maxTorque) {
+    let value = inputElement.value.trim();
+
+    if (value === "") {
+        inputElement.style.backgroundColor = "#fff"; // Оставляем белым
+        return;
+    }
+
+    value = parseFloat(value);
+
+    if (value >= minTorque && value <= maxTorque) {
+        inputElement.style.backgroundColor = "#d4edda"; // ✅ Зеленый (норма)
+    } else {
+        inputElement.style.backgroundColor = "#f8d7da"; // ❌ Красный (ошибка)
+    }
+}
+
+
+document.addEventListener("DOMContentLoaded", function () {
+    console.log("🔧 Дефекты загружены!");
+
+    let defectNoRadio = document.getElementById("defect_no");
+    let defectYesRadio = document.getElementById("defect_yes");
+    let defectContainer = document.getElementById("defect_container");
+    let defectList = document.getElementById("defect_list");
+    let addDefectBtn = document.getElementById("add_defect_btn");
+    let defectTemplate = document.getElementById("defect_template");
+
+    if (!defectNoRadio || !defectYesRadio || !defectContainer) {
+        console.error("❌ Ошибка: Один из элементов для управления дефектами не найден.");
+        return;
+    }
+
+    // ✅ Показываем или скрываем контейнер дефектов
+    function toggleDefectForm() {
+        if (defectYesRadio.checked) {
+            defectContainer.style.display = "block";
+            // ❗ Форма дефекта не создается автоматически
+        } else {
+            defectContainer.style.display = "none";
+            defectList.innerHTML = ""; // Очищаем список дефектов
+        }
+    }
+
+    defectNoRadio.addEventListener("change", toggleDefectForm);
+    defectYesRadio.addEventListener("change", toggleDefectForm);
+
+    // ✅ Функция добавления дефекта
+    function addDefectForm() {
+        let defectIndex = defectList.children.length + 1;
+
+        let newDefect = defectTemplate.cloneNode(true);
+        newDefect.style.display = "block";
+        newDefect.classList.add("defect-form");
+        newDefect.querySelector(".defect-title").textContent = `Дефект ${defectIndex}`;
+
+        // Назначаем корректные ID и name для полей
+        newDefect.querySelector(".defect-type").name = `defect_type_${defectIndex}`;
+        newDefect.querySelector(".defect-quantity").name = `defect_quantity_${defectIndex}`;
+        newDefect.querySelector(".defect-photo").name = `defect_photo_${defectIndex}`;
+        newDefect.querySelector(".defect-photo").id = `defect_photo_${defectIndex}`;
+
+        let previewContainer = document.createElement("div");
+        previewContainer.id = `defect_photo_preview_${defectIndex}`;
+        previewContainer.classList.add("defect-photo-preview");
+        newDefect.querySelector(".defect-photo").after(previewContainer);
+
+        // 📷 Исправляем обработчик кнопки камеры
+        let openCameraBtn = newDefect.querySelector(".open-camera-btn");
+        openCameraBtn.setAttribute("data-input-id", `defect_photo_${defectIndex}`);
+        openCameraBtn.setAttribute("data-preview-id", `defect_photo_preview_${defectIndex}`);
+        openCameraBtn.addEventListener("click", function () {
+            openCamera(`defect_photo_${defectIndex}`, `defect_photo_preview_${defectIndex}`);
+        });
+
+        // ❌ Обработчик удаления дефекта
+        newDefect.querySelector(".remove-defect-btn").addEventListener("click", function () {
+            newDefect.remove();
+            updateDefectNumbers();
+        });
+
+        defectList.appendChild(newDefect);
+        updateDefectNumbers();
+    }
+
+    // ✅ Обновление нумерации дефектов
+    function updateDefectNumbers() {
+        document.querySelectorAll(".defect-form").forEach((form, index) => {
+            const i = index + 1;
+            form.querySelector(".defect-title").textContent = `Дефект ${i}`;
+
+            const typeInput = form.querySelector(".defect-type");
+            const quantityInput = form.querySelector(".defect-quantity");
+            const photoInput = form.querySelector(".defect-photo");
+            const previewContainer = form.querySelector(".defect-photo-preview");
+            const openCameraBtn = form.querySelector(".open-camera-btn");
+
+            // Обновляем name и id
+            typeInput.name = `defect_type_${i}`;
+            quantityInput.name = `defect_quantity_${i}`;
+            photoInput.name = `defect_photo_${i}`;
+            photoInput.id = `defect_photo_${i}`;
+            previewContainer.id = `defect_photo_preview_${i}`;
+
+            // Обновляем кнопку камеры
+            openCameraBtn.setAttribute("data-input-id", `defect_photo_${i}`);
+            openCameraBtn.setAttribute("data-preview-id", `defect_photo_preview_${i}`);
+
+            // Удаляем предыдущий обработчик и навешиваем заново
+            const newBtn = openCameraBtn.cloneNode(true);
+            openCameraBtn.replaceWith(newBtn);
+            newBtn.addEventListener("click", function () {
+                openCamera(`defect_photo_${i}`, `defect_photo_preview_${i}`);
+            });
+        });
+    }
+
+
+    // ✅ Проверка состояния при загрузке страницы
+    toggleDefectForm();
+});
+
+
+
+document.addEventListener("DOMContentLoaded", function () {
+    console.log("🚀 JavaScript загружен!");
+
+    let defectContainer = document.getElementById("defect_container");
+    let defectList = document.getElementById("defect_list");
+    let addDefectBtn = document.getElementById("add_defect_btn");
+    let defectTemplate = document.getElementById("defect_template");
+
+    // 📌 Обработка "Есть дефект"
+    document.querySelectorAll("input[name='has_defect']").forEach(radio => {
+        radio.addEventListener("change", function () {
+            if (this.value === "yes") {
+                defectContainer.style.display = "block";
+                if (defectList.children.length === 0) {
+                    addDefectForm(true); // Добавляем первый дефект автоматически
+                }
+            } else {
+                defectContainer.style.display = "none";
+                defectList.innerHTML = "";
+            }
+        });
+    });
+
+    // 📌 Добавление нового дефекта
+    function addDefectForm(isFirst = false) {
+        let defectIndex = defectList.children.length + 1;
+        let newDefect = defectTemplate.cloneNode(true);
+        newDefect.style.display = "block";
+        newDefect.classList.add("defect-form");
+        newDefect.querySelector(".defect-title").textContent = `Дефект ${defectIndex}`;
+
+        // Уникальные ID для фото
+        let photoInput = newDefect.querySelector(".defect-photo");
+        let previewContainer = newDefect.querySelector(".defect-photo-preview");
+        let openCameraBtn = newDefect.querySelector(".open-camera-btn");
+
+        let inputId = `defect_photo_${defectIndex}`;
+        let previewId = `defect_photo_preview_${defectIndex}`;
+
+        photoInput.id = inputId;
+        previewContainer.id = previewId;
+        openCameraBtn.setAttribute("data-input-id", inputId);
+        openCameraBtn.setAttribute("data-preview-id", previewId);
+
+        // 📷 Назначаем обработчик для камеры
+        openCameraBtn.addEventListener("click", function () {
+            openCamera(inputId, previewId);
+        });
+
+        // ❌ Удаление дефекта
+        newDefect.querySelector(".remove-defect-btn").addEventListener("click", function () {
+            newDefect.remove();
+            updateDefectNumbers();
+        });
+
+        if (isFirst) {
+            defectList.innerHTML = ""; // Очищаем старые дефекты
+        }
+
+        defectList.appendChild(newDefect);
+    }
+
+    // 📌 Обновление нумерации дефектов
+    function updateDefectNumbers() {
+        document.querySelectorAll(".defect-form").forEach((form, index) => {
+            form.querySelector(".defect-title").textContent = `Дефект ${index + 1}`;
+        });
+    }
+
+    // 📌 Добавление дефекта по кнопке
+    addDefectBtn.addEventListener("click", function () {
+        addDefectForm();
+    });
+
+    // 📷 Функция камеры
+    function openCamera(inputId, previewId) {
+        let modal = document.createElement("div");
+        modal.id = "camera_modal";
+        modal.style.position = "fixed";
+        modal.style.top = "0";
+        modal.style.left = "0";
+        modal.style.width = "100%";
+        modal.style.height = "100%";
+        modal.style.background = "rgba(0, 0, 0, 0.8)";
+        modal.style.zIndex = "9999";
+        modal.style.display = "flex";
+        modal.style.flexDirection = "column";
+        modal.style.alignItems = "center";
+        modal.style.justifyContent = "center";
+
+        modal.innerHTML = `
+            <video id="camera_feed" autoplay playsinline style="width: 90%; max-width: 400px;"></video>
+            <button id="capture_button" class="btn btn-success mt-2">📸 Сфотографировать</button>
+            <button id="close_camera" class="btn btn-danger mt-2">❌ Закрыть</button>
+        `;
+
+        document.body.appendChild(modal);
+
+        let video = modal.querySelector("#camera_feed");
+        let captureButton = modal.querySelector("#capture_button");
+        let closeButton = modal.querySelector("#close_camera");
+
+        let activeInput = document.getElementById(inputId);
+        let activePreview = document.getElementById(previewId);
+        let activeStream = null;
+
+        // 📷 Запуск камеры
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            .then(function (stream) {
+                activeStream = stream;
+                video.srcObject = stream;
+                setTimeout(() => video.play(), 500);
+            })
+            .catch(function (error) {
+                console.error("❌ Ошибка камеры:", error);
+                alert(`Ошибка доступа к камере: ${error.message}`);
+            });
+
+        // 📷 Фотографирование
+        captureButton.addEventListener("click", function () {
+            let canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            let ctx = canvas.getContext("2d");
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(function (blob) {
+                let file = new File([blob], `photo_${Date.now()}.jpg`, { type: "image/jpeg" });
+
+                let dataTransfer = new DataTransfer();
+                if (activeInput.multiple) {
+                    for (let existingFile of activeInput.files) {
+                        dataTransfer.items.add(existingFile);
+                    }
+                }
+                dataTransfer.items.add(file);
+                activeInput.files = dataTransfer.files;
+
+                // ✅ Отображаем фото
+                let imgContainer = document.createElement("div");
+                imgContainer.classList.add("d-flex", "flex-column", "align-items-center", "m-2");
+
+                let img = document.createElement("img");
+                img.src = URL.createObjectURL(file);
+                img.classList.add("img-thumbnail", "defect-photo-img");
+
+                let deleteBtn = document.createElement("button");
+                deleteBtn.classList.add("btn", "btn-danger", "btn-sm", "mt-2");
+                deleteBtn.innerHTML = "Удалить";
+                deleteBtn.onclick = function () {
+                    imgContainer.remove();
+                    removeFileFromInput(activeInput, file);
+                };
+
+                imgContainer.appendChild(img);
+                imgContainer.appendChild(deleteBtn);
+                activePreview.appendChild(imgContainer);
+
+                closeCamera();
+            }, "image/jpeg");
+        });
+
+        // ❌ Закрытие камеры
+        function closeCamera() {
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+                activeStream = null;
+            }
+            video.srcObject = null;
+            modal.remove();
+        }
+
+        closeButton.addEventListener("click", closeCamera);
+        modal.addEventListener("click", function (event) {
+            if (event.target === modal) {
+                closeCamera();
+            }
+        });
+
+        function removeFileFromInput(inputElement, fileToRemove) {
+            let dataTransfer = new DataTransfer();
+            for (let i = 0; i < inputElement.files.length; i++) {
+                if (inputElement.files[i] !== fileToRemove) {
+                    dataTransfer.items.add(inputElement.files[i]);
+                }
+            }
+            inputElement.files = dataTransfer.files;
+        }
+    }
+
+    // ✅ Проверка дефектов при загрузке страницы
+    document.querySelectorAll("input[name='has_defect']:checked").forEach(radio => {
+        if (radio.value === "yes") {
+        }
+    });
+
+    console.log("✅ Все функции успешно загружены!");
+});
+
+
+document.querySelector("form").addEventListener("submit", function (e) {
+    const torqueInputs = document.querySelectorAll(".torque-value");
+    const values = [];
+
+    torqueInputs.forEach(input => {
+        const value = parseFloat(input.value);
+        if (!isNaN(value)) {
+            values.push(value);
+        }
+    });
+
+    // ✅ Проверка минимального количества введённых моментов затяжки
+    const required = window.requiredMinTorqueCount || 1;
+    if (values.length < required) {
+        e.preventDefault();  // ❌ Отменяем отправку
+        alert(`⚠️ Необходимо ввести минимум ${required} значений момента затяжки.`);
+        return;
+    }
+
+    // ✅ Сохраняем в скрытое поле
+    document.getElementById("torque_values_input").value = JSON.stringify(values);
+
+    // 🔄 Очистим старые hidden input'ы (во избежание мусора от удалённых дефектов)
+    document.querySelectorAll("input[name^='defect_type_'], input[name^='defect_quantity_'], input[name^='defect_photo_']").forEach(el => el.remove());
+
+    // ✅ Пересоздаём поля дефектов по актуальному списку
+    const defectForms = document.querySelectorAll(".defect-form");
+    defectForms.forEach((form, index) => {
+        const i = index + 1;
+
+        const type = form.querySelector(".defect-type").value;
+        const quantity = form.querySelector(".defect-quantity").value;
+        const photoInput = form.querySelector(".defect-photo");
+
+        let typeInput = document.createElement("input");
+        typeInput.type = "hidden";
+        typeInput.name = `defect_type_${i}`;
+        typeInput.value = type;
+        form.appendChild(typeInput);
+
+        let quantityInput = document.createElement("input");
+        quantityInput.type = "hidden";
+        quantityInput.name = `defect_quantity_${i}`;
+        quantityInput.value = quantity;
+        form.appendChild(quantityInput);
+
+        photoInput.name = `defect_photo_${i}`;
+        photoInput.id = `defect_photo_${i}`;
+    });
+});
+
+</script>
+{% endblock %}

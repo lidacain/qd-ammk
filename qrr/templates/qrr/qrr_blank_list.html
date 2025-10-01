@@ -1,0 +1,152 @@
+{% extends "users/base.html" %}
+{% block title %}Бланки расследования дефектов{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <a href="{% url 'qrr_dashboard' %}" class="btn btn-outline-secondary mb-4">← Назад</a>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="text-center mb-0">Бланки расследования дефектов</h2>
+        <a href="{% url 'qrr_blank_create' %}" class="btn btn-success">➕ Создать пустой БРД</a>
+    </div>
+
+    {% if messages %}
+        <div class="mb-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+
+    <ul class="nav nav-tabs mb-3" id="myTab" role="tablist">
+        {% for grade in grouped.keys %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if forloop.first %}active{% endif %}" id="{{ grade }}-tab"
+                        data-bs-toggle="tab" data-bs-target="#{{ grade }}" type="button" role="tab">
+                    {{ grade }}
+                </button>
+            </li>
+        {% endfor %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if not grouped %}active{% endif %}" id="manual-tab"
+                    data-bs-toggle="tab" data-bs-target="#manual" type="button" role="tab">
+                БРД вручную
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="myTabContent">
+        {% for grade, items in grouped.items %}
+            <div class="tab-pane fade {% if forloop.first %}show active{% endif %}" id="{{ grade }}" role="tabpanel">
+                <table class="table table-bordered align-middle table-hover">
+                    <thead class="table-dark text-center">
+                        <tr>
+                            <th>БРД / VIN</th>
+                            <th>Специалист</th>
+                            <th>Дата</th>
+                            <th>Статус</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                            <tr class="text-center">
+                                <td>
+                                    {% if item.investigation %}
+                                        <div><strong>{{ item.investigation.form_number }}</strong></div>
+                                    {% else %}
+                                        <div><strong>—</strong></div>
+                                    {% endif %}
+                                    <div class="text-muted">{{ item.vin }}</div>
+                                </td>
+                                <td>
+                                    {% if item.investigation %}
+                                        {{ item.investigation.created_by.get_full_name_with_patronymic }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.date_added %}
+                                        {{ item.date_added|date:"d.m.Y H:i" }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.investigation %}
+                                        {% if item.investigation.status == 'draft' %}
+                                            <span class="badge bg-danger">Не отправлен</span>
+                                        {% elif item.investigation.status == 'in_progress' %}
+                                            <span class="badge bg-warning text-dark">В процессе</span>
+                                        {% elif item.investigation.status == 'completed' %}
+                                            {% if item.investigation.confirmed_at %}
+                                                <span class="badge bg-success">Подтвержден</span>
+                                            {% else %}
+                                                <span class="badge bg-info text-dark">Ожидает подтверждения</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-secondary">Не создан</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.investigation %}
+                                        <a href="#" class="btn btn-outline-primary btn-sm">Открыть</a>
+                                    {% else %}
+                                        <a href="{% url 'create_qrr_blank' %}?vin={{ item.vin }}&station={{ item.zone }} / {{ item.post }}&date={{ item.date_added|date:'Y-m-d' }}" class="btn btn-success btn-sm">
+                                            Создать
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endfor %}
+
+        <div class="tab-pane fade {% if not grouped %}show active{% endif %}" id="manual" role="tabpanel">
+            <table class="table table-bordered align-middle table-hover">
+                <thead class="table-dark text-center">
+                    <tr>
+                        <th>БРД</th>
+                        <th>VIN</th>
+                        <th>Дата</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for brd in manual_list %}
+                        <tr class="text-center">
+                            <td><strong>{{ brd.form_number }}</strong></td>
+                            <td>{{ brd.vin }}</td>
+                            <td>{{ brd.form_date|date:"d.m.Y" }}</td>
+                            <td>
+                                {% if brd.status == 'draft' %}
+                                    <span class="badge bg-danger">Не отправлен</span>
+                                {% elif brd.status == 'in_progress' %}
+                                    <span class="badge bg-warning text-dark">В процессе</span>
+                                {% elif brd.status == 'completed' %}
+                                    <span class="badge bg-success">Подтвержден</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="#" class="btn btn-outline-primary btn-sm">Открыть</a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center">Нет созданных вручную БРД.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,1412 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}Документация — таблица{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <a href="javascript:history.back()" class="btn btn-outline-secondary mb-4">← Назад</a>
+
+  <h3 class="text-center mb-4">Таблица поста «Документация»</h3>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %}">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="table-responsive doc-table-wrap">
+  <div id="doc-toolbar-actions-proto" class="d-none">
+    <div class="doc-toolbar-actions d-flex flex-wrap gap-2">
+      <button type="button" class="btn btn-outline-secondary" id="btnResetFilters">
+        Сбросить все фильтры
+      </button>
+
+      <div class="btn-group" id="exportExcelGroup" data-bs-auto-close="outside">
+        <button type="button"
+                class="btn btn-outline-primary dropdown-toggle"
+                id="btnExportExcel"
+                data-bs-toggle="dropdown"
+                aria-expanded="false">
+          Скачать Excel
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="btnExportExcel">
+          <li><a class="dropdown-item" href="#" id="exportBrief">Скачать краткий отчёт</a></li>
+          <li><a class="dropdown-item" href="#" id="exportFull">Скачать расширенную версию</a></li>
+        </ul>
+
+        <!-- Поповер выбора грейда -->
+        <div id="grade-popover" class="grade-popover d-none" role="dialog" aria-hidden="true">
+          <div class="gp-head" style="font-weight:600;margin-bottom:.25rem;">Грейд</div>
+
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" id="gp-all" checked>
+            <label class="form-check-label" for="gp-all">Все</label>
+          </div>
+          <hr class="my-2">
+
+          <div class="d-grid gap-1">
+            <div class="form-check">
+              <input class="form-check-input gp-item" type="checkbox" id="gp-v1p" value="V1+" checked>
+              <label class="form-check-label" for="gp-v1p">V1+</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input gp-item" type="checkbox" id="gp-v1" value="V1" checked>
+              <label class="form-check-label" for="gp-v1">V1</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input gp-item" type="checkbox" id="gp-v2" value="V2" checked>
+              <label class="form-check-label" for="gp-v2">V2</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input gp-item" type="checkbox" id="gp-v3" value="V3" checked>
+              <label class="form-check-label" for="gp-v3">V3</label>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end gap-2 mt-2">
+            <button type="button" class="btn btn-sm btn-secondary" id="gp-cancel">Отмена</button>
+            <button type="button" class="btn btn-sm btn-success" id="gp-apply">Скачать</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <table class="table table-hover align-middle" id="documentationTable">
+    <thead class="table-dark">
+      <tr>
+        <th scope="col">VIN</th>
+        <th scope="col">Бренд
+          <button type="button" class="btn btn-sm btn-light th-filter-btn" data-key="brand" aria-label="Фильтр">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </th>
+        <th scope="col">Модель
+          <button type="button" class="btn btn-sm btn-light th-filter-btn" data-key="model" aria-label="Фильтр">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </th>
+
+        <!-- НОВОЕ: Цвет кузова -->
+        <th scope="col">Цвет кузова
+          <button type="button" class="btn btn-sm btn-light th-filter-btn" data-key="body_color" aria-label="Фильтр">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </th>
+
+        <!-- НОВОЕ: Код комплектации -->
+        <th scope="col">Код комплектации
+          <button type="button" class="btn btn-sm btn-light th-filter-btn" data-key="config_code" aria-label="Фильтр">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </th>
+
+        <th scope="col">Дата
+          <button type="button" class="btn btn-sm btn-light th-filter-btn" data-key="date" aria-label="Фильтр">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </th>
+        <th scope="col">Время</th>
+        <th scope="col">Кто сохранил
+          <button type="button" class="btn btn-sm btn-light th-filter-btn" data-key="added_by" aria-label="Фильтр">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </th>
+        <th scope="col" class="th-has-filter">
+          <span class="th-title">Есть ли невозможные<br>дефекты к исправленю?</span>
+          <button type="button" class="btn btn-sm btn-light th-filter-btn" data-key="yesno" aria-label="Фильтр">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </th>
+        <th scope="col">Количество
+          <button type="button" class="btn btn-sm btn-light th-filter-btn" data-key="impossible" aria-label="Фильтр">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% if rows and rows|length %}
+        {% for row in rows %}
+          <tr
+            data-vin="{{ row.vin|default_if_none:'' }}"
+            data-brand="{{ row.brand|default_if_none:'' }}"
+            data-model="{{ row.model|default_if_none:'' }}"
+            data-body_color="{{ row.body_color|default_if_none:'' }}"
+            data-config_code="{{ row.config_code|default_if_none:'' }}"
+            data-date="{{ row.date|default_if_none:'' }}"
+            data-time="{{ row.time|default_if_none:'' }}"
+            data-added_by="{{ row.added_by|default_if_none:'' }}"
+            data-impossible_yesno="{{ row.impossible_yesno|default_if_none:'' }}"
+            data-impossible="{{ row.impossible_defects|default_if_none:0 }}"
+            data-added_at="{{ row.added_at|default_if_none:'' }}"
+          >
+            <td class="fw-semibold">{{ row.vin }}</td>
+            <td>{{ row.brand }}</td>
+            <td>{{ row.model }}</td>
+            <td>{{ row.body_color }}</td>      <!-- НОВОЕ -->
+            <td>{{ row.config_code }}</td>     <!-- НОВОЕ -->
+            <td>{{ row.date }}</td>
+            <td>{{ row.time }}</td>
+            <td>{{ row.added_by }}</td>
+            <td>
+              {% if row.impossible_yesno == "Да" %}
+                <span class="badge text-bg-danger">Да</span>
+              {% else %}
+                <span class="badge text-bg-success">Нет</span>
+              {% endif %}
+            </td>
+            <td>{% if row.impossible_yesno == "Да" %}{{ row.impossible_defects }}{% endif %}</td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="11" class="text-center text-muted py-4">
+            Данные отсутствуют
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+</div>
+<style>
+  /* Кнопка-фильтр (пилюля) в заголовке */
+  .th-filter-btn {
+    padding: .125rem .375rem;
+    border-radius: .5rem;
+    line-height: 1;
+    border: 1px solid rgba(255,255,255,.25);
+    background: #fff; /* белая кнопка на тёмном заголовке */
+  }
+  .th-filter-btn i { color:#111; opacity:.95; font-size: 1rem; vertical-align: middle; }
+
+  /* Активный фильтр — зелёная пилюля с белой иконкой */
+  .th-filter-btn.filter-active { background:#16a34a; border-color:#16a34a; }
+  .th-filter-btn.filter-active i { color:#fff; opacity:1; }
+
+  /* Поповер фильтра */
+  .col-filter-popover {
+    position: absolute;
+    z-index: 1000;
+    min-width: 260px;
+    max-height: 360px;
+    background: #fff;
+    color:#111;
+    border: 1px solid rgba(0,0,0,.15);
+    border-radius: .5rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    padding: .75rem;
+    overflow: hidden;
+  }
+  .col-filter-popover .cf-head { display:flex; gap:.5rem; margin-bottom:.5rem; }
+  .col-filter-popover .cf-head input { flex:1; }
+  .col-filter-popover .cf-body { overflow:auto; max-height: 240px; padding-right:.25rem; }
+  .col-filter-popover .cf-actions { display:flex; gap:.5rem; justify-content:flex-end; margin-top:.5rem; }
+
+  /* Таблица растянута на 90% ширины окна (full-bleed) */
+  .doc-table-wrap{
+    position: relative;
+    width: 90vw;                 /* 90% ширины viewport */
+    left: 50%;
+    transform: translateX(-50%); /* центрирование */
+    max-width: none !important;  /* игнорируем max-width родителя */
+  }
+  /* На маленьких экранах — на всю ширину */
+  @media (max-width: 992px){
+    .doc-table-wrap{
+      width: 100vw;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+  }
+
+  /* Подсветка группы строк по "Есть невозможные" */
+  .bg-group-yes td {  /* Да */
+    background: rgba(239, 68, 68, .12);
+  }
+  .bg-group-no td {   /* Нет */
+    background: rgba(34, 197, 94, .10);
+  }
+
+  /* Визуальный акцент VIN */
+  #documentationTable tbody tr td:first-child { font-weight:600; }
+
+  th.th-has-filter {
+    position: relative;
+    padding-right: 2.25rem; /* место под кнопку справа, чтобы текст не налезал */
+    white-space: normal;    /* разрешаем перенос строк в заголовке */
+  }
+  th.th-has-filter .th-title {
+    display: block;
+    line-height: 1.15;
+  }
+  th.th-has-filter .th-filter-btn {
+    position: absolute;
+    right: .5rem;
+    top: 50%;
+    transform: translateY(-50%); /* вертикально по центру ячейки */
+  }
+
+  #exportExcelGroup { position: relative; }
+  #exportExcelGroup .dropdown-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 1050; /* выше таблицы/хедеров */
+  }
+  #exportExcelGroup .dropdown-menu.show { display: block; }
+
+  .grade-popover{
+     position: fixed;
+    z-index: 1055;
+    width: 220px;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: .5rem;
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+    padding: .75rem;
+  }
+  .grade-popover .gp-head{
+    font-weight: 600;
+    margin-bottom: .25rem;
+  }
+</style>
+<script type="text/javascript" src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<script>const EXPORT_ADVANCED_URL = "{% url 'assembly:docs_export_extended' %}";</script>
+
+
+<script>
+(function () {
+  // Индексы столбцов (если порядок не менялся)
+  const COLS = {
+    vin:0,
+    brand:1,
+    model:2,
+    body_color:3,    // ← НОВОЕ
+    config_code:4,   // ← НОВОЕ
+    date:5,
+    time:6,
+    added_by:7,
+    yesno:8,
+    impossible:9
+  };
+
+  const table = document.getElementById("documentationTable");
+  if (!table) return;
+  const thead = table.tHead;
+  const tbody = table.tBodies[0];
+
+  // Забираем все TR, которые вернул сервер
+  const allRowNodes = Array.from(tbody.querySelectorAll("tr"));
+
+  // ── хелперы ───────────────────────────────────────
+  const byText = (td) => (td ? td.textContent.trim() : "");
+  const parseNum = (s) => {
+    const n = Number(String(s).replace(/\s+/g,"").replace(",","."));
+    return Number.isFinite(n) ? n : null;
+  };
+  const parseIso = (s) => {
+    const t = Date.parse(s);
+    return Number.isFinite(t) ? t : -Infinity; // если пусто/битое
+  };
+
+  function parseDDMMYYYY(s) {
+    const m = String(s || "").trim().match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!m) return null;
+    const [_, dd, mm, yyyy] = m;
+    return new Date(Number(yyyy), Number(mm)-1, Number(dd), 0, 0, 0, 0).getTime();
+  }
+  // 'YYYY-MM-DD' (input[type=date]) -> timestamp
+  function parseYMD(ymd) {
+    const m = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const [_, y, mth, d] = m;
+    return new Date(Number(y), Number(mth)-1, Number(d), 0, 0, 0, 0).getTime();
+  }
+  // timestamp -> 'YYYY-MM-DD' для value инпута
+  function tsToYMD(ts) {
+    if (ts == null) return "";
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  }
+
+  // ── модель строк и групп ─────────────────────────
+  function harvestRows() {
+    return allRowNodes.map(tr => {
+      const vin = tr.dataset.vin || byText(tr.cells[COLS.vin]);
+      const addedAt = tr.dataset.added_at || "";
+      return { tr, vin, addedAt, addedAtTs: parseIso(addedAt) };
+    });
+  }
+
+  function groupByVin(rowModels) {
+    const map = new Map();
+    for (const r of rowModels) {
+      if (!map.has(r.vin)) map.set(r.vin, []);
+      map.get(r.vin).push(r);
+    }
+    const groups = [];
+    for (const [vin, items] of map.entries()) {
+      items.sort((a,b) => b.addedAtTs - a.addedAtTs); // внутри VIN — свежие вверх
+      const latestTs = items.length ? items[0].addedAtTs : -Infinity;
+      groups.push({ vin, items, latestTs });
+    }
+    return groups;
+  }
+
+  // ── состояние ─────────────────────────────────────
+  let baseGroups = groupByVin(harvestRows());
+  baseGroups.sort((a,b) => b.latestTs - a.latestTs); // по свежести VIN-группы
+
+  let currentGroups = baseGroups.slice(); // после фильтров
+  let pageSize = 50;                      // групп на странице
+  let currentPage = 1;
+  let sortState = { col: null, dir: 1 };
+
+  const filters = {
+    brand: null,
+    model: null,
+    body_color: null,
+    config_code: null,
+    date: null,
+    added_by: null,
+    yesno: null,
+    impossible: null,          // ← добавили
+  };
+
+  function resetAllFilters() {
+    // очистить объект фильтров
+    for (const k of Object.keys(filters)) {
+      filters[k] = null;
+    }
+
+    // снять подсветку активных кнопок фильтров
+    document.querySelectorAll(".th-filter-btn.filter-active")
+      .forEach(btn => btn.classList.remove("filter-active"));
+
+    // очистить быстрый поиск по VIN
+    const vinInput = document.getElementById("vinQuickSearch");
+    if (vinInput) vinInput.value = "";
+
+    // закрыть открытый поповер, если есть
+    if (openedFilterPopover) {
+      openedFilterPopover.remove();
+      openedFilterPopover = null;
+    }
+
+    // сбросить страницу и перерисовать
+    currentPage = 1;
+    render();
+  }
+
+  // Текущее текстовое значение колонки для ГРУППЫ (берём из первой строки группы)
+  function getGroupValue(group, key) {
+    const firstTr = group.items[0].tr;
+    switch (key) {
+      case "brand":        return firstTr.dataset.brand || firstTr.cells[COLS.brand]?.textContent.trim() || "";
+      case "model":        return firstTr.dataset.model || firstTr.cells[COLS.model]?.textContent.trim() || "";
+      case "body_color":   return firstTr.dataset.body_color || firstTr.cells[COLS.body_color]?.textContent.trim() || "";
+      case "config_code":  return firstTr.dataset.config_code || firstTr.cells[COLS.config_code]?.textContent.trim() || "";
+      case "date":         return firstTr.dataset.date || firstTr.cells[COLS.date]?.textContent.trim() || "";
+      case "added_by":     return firstTr.dataset.added_by || firstTr.cells[COLS.added_by]?.textContent.trim() || "";
+      case "yesno":        return firstTr.dataset.impossible_yesno || firstTr.cells[COLS.yesno]?.textContent.trim() || "";
+      case "impossible":   // важное: в ячейке «0» скрыт, поэтому берём из data-*
+        return (firstTr.dataset.impossible ?? (firstTr.cells[COLS.impossible]?.textContent.trim() || ""));
+      default:             return "";
+    }
+  }
+
+  // Вычислить уникальные значения по колонке (по текущему набору currentGroups)
+  function distinctValues(key) {
+    const s = new Set();
+    for (const g of currentGroups) s.add(getGroupValue(g, key));
+    // удалим пустые значения из списка
+    s.delete("");
+    return Array.from(s).sort((a,b)=>a.localeCompare(b, "ru", {sensitivity:"base"}));
+  }
+
+  // Проверка: проходит ли группа по всем активным фильтрам
+  function passesFilters(group) {
+    // остальные фильтры (brand/model/added_by/yesno)
+    for (const [key, set] of Object.entries(filters)) {
+      if (key === "date") continue; // дату проверим ниже
+      if (set && set.size) {
+        const val = getGroupValue(group, key);
+        if (!set.has(val)) return false;
+      }
+    }
+    // дата-диапазон
+    const range = filters.date; // {fromTs, toTs} | null
+    if (range && (range.fromTs || range.toTs)) {
+      const dStr = getGroupValue(group, "date");       // "DD.MM.YYYY"
+      const dTs = parseDDMMYYYY(dStr);                 // ts полуночи
+      if (dTs == null) return false;
+      if (range.fromTs && dTs < range.fromTs) return false;
+      if (range.toTs   && dTs > range.toTs)   return false; // toTs уже конец дня
+    }
+    return true;
+  }
+  // Применить фильтры поверх VIN-поиска (currentGroups уже после VIN-поиска)
+  function applyColumnFilters() {
+    currentGroups = currentGroups.filter(g => passesFilters(g));
+  }
+
+  // ── тулбар: поиск по VIN и выбор размера 0-50/0-100/0-200 ──
+  function createToolbar() {
+    const bar = document.createElement("div");
+    bar.className = "d-flex flex-wrap gap-2 align-items-center mb-3";
+
+    const vinInput = document.createElement("input");
+    vinInput.type = "text";
+    vinInput.placeholder = "VIN...";
+    vinInput.className = "form-control";
+    vinInput.style.maxWidth = "320px";
+    vinInput.id = "vinQuickSearch";
+
+    const sizeWrap = document.createElement("div");
+    sizeWrap.className = "d-flex align-items-center gap-2";
+
+    const sizeLabel = document.createElement("span");
+    sizeLabel.textContent = "Показать на странице:";
+
+    const sizeSelect = document.createElement("select");
+    sizeSelect.className = "form-select";
+    sizeSelect.style.width = "140px";
+    [50, 100, 200].forEach(n => {
+      const o = document.createElement("option");
+      o.value = String(n);
+      o.textContent = `0-${n}`;
+      if (n === pageSize) o.selected = true;
+      sizeSelect.appendChild(o);
+    });
+
+    // правая часть тулбара (пагинация + наши кнопки)
+    const rightWrap = document.createElement("div");
+    rightWrap.className = "ms-auto d-flex flex-wrap gap-2 align-items-center";
+
+    const pager = document.createElement("div");
+    pager.id = "docTablePager";
+    pager.className = "d-flex flex-wrap gap-2";
+
+    // подтягиваем заготовку кнопок из HTML и вставляем в правый край
+    const proto = document.getElementById("doc-toolbar-actions-proto");
+    if (proto) {
+      const protoActions = proto.querySelector(".doc-toolbar-actions");
+      if (protoActions) {
+        const actions = protoActions.cloneNode(true);
+        actions.id = "doc-toolbar-actions";
+        actions.classList.remove("d-none");
+        rightWrap.appendChild(actions);
+        proto.remove();
+
+        // обработчик "Сбросить все фильтры"
+        const btnReset = actions.querySelector("#btnResetFilters");
+        if (btnReset) {
+          btnReset.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            resetAllFilters();
+          });
+        }
+
+        // fallback для dropdown, если bootstrap JS не подключён
+        const exportBtn = actions.querySelector("#btnExportExcel");
+        const menu = actions.querySelector(".dropdown-menu");
+        const group = actions.querySelector("#exportExcelGroup");
+
+        if (exportBtn && menu) {
+          const hasBsDropdown = !!(window.bootstrap && typeof window.bootstrap.Dropdown === "function");
+
+          if (hasBsDropdown) {
+            // Ничего не делаем: Bootstrap сам повесит обработчики по data-атрибутам
+          } else {
+            // Делаем дропдаун вручную
+            exportBtn.removeAttribute("data-bs-toggle"); // чтобы не мешал полурабочий Bootstrap
+            if (group && getComputedStyle(group).position === "static") {
+              group.style.position = "relative";
+            }
+            const toggleMenu = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              menu.classList.toggle("show");
+            };
+            const closeMenu = () => menu.classList.remove("show");
+
+            exportBtn.addEventListener("click", toggleMenu);
+            document.addEventListener("click", closeMenu);
+            // чтобы клики внутри меню не закрывали его мгновенно
+            menu.addEventListener("click", (e) => e.stopPropagation());
+          }
+
+          // Пункты меню
+          const exportBrief = actions.querySelector("#exportBrief");
+          const exportFull  = actions.querySelector("#exportFull");
+
+          if (exportBrief) {
+            exportBrief.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // показать поповер выбора грейдов справа от пункта меню
+              if (typeof window.__showDocGradePopover === "function") {
+                window.__showDocGradePopover(e.currentTarget, "simple");
+              }
+            });
+          }
+
+          if (exportFull) {
+            exportFull.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // показать поповер выбора грейдов справа от пункта меню
+              if (typeof window.__showDocGradePopover === "function") {
+                window.__showDocGradePopover(e.currentTarget, "extended");
+              }
+            });
+          }
+        }
+      }
+    }
+
+    sizeWrap.append(sizeLabel, sizeSelect);
+    rightWrap.appendChild(pager);
+    bar.append(vinInput, sizeWrap, rightWrap);
+    const wrap = table.parentElement;
+    wrap.parentElement.insertBefore(bar, wrap);
+
+    vinInput.addEventListener("input", () => {
+      applyVinFilter(vinInput.value.trim());
+    });
+    sizeSelect.addEventListener("change", () => {
+      pageSize = Number(sizeSelect.value) || 50;
+      currentPage = 1;
+      render();
+    });
+  }
+
+  function applyVinFilter(q) {
+    const needle = q.toUpperCase();
+    currentGroups = needle
+      ? baseGroups.filter(g => g.vin.toUpperCase().includes(needle))
+      : baseGroups.slice();
+
+    // сразу накладываем активные колонночные фильтры
+    applyColumnFilters();
+
+    currentPage = 1;
+    render();
+  }
+
+  function getFilteredVINs() {
+    const vinInput = document.getElementById("vinQuickSearch");
+    const needle = (vinInput?.value || "").trim().toUpperCase();
+
+    // как в render(): применяем строковый фильтр VIN + колонночные фильтры
+    let groups = needle
+      ? baseGroups.filter(g => g.vin.toUpperCase().includes(needle))
+      : baseGroups.slice();
+
+    groups = groups.filter(g => passesFilters(g));
+    return groups.map(g => g.vin);
+  }
+
+
+
+  // ── рендер пагинатора ────────────────────────────
+  function renderPager(total, page, perPage) {
+    const pager = document.getElementById("docTablePager");
+    if (!pager) return;
+    pager.innerHTML = "";
+
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+    const addBtn = (label, toPage, disabled=false, active=false) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.className = "btn btn-sm " + (active ? "btn-primary" : "btn-outline-secondary");
+      b.disabled = disabled;
+      b.addEventListener("click", () => { currentPage = toPage; render(); });
+      pager.appendChild(b);
+    };
+
+    addBtn("«", 1, page===1);
+    addBtn("‹", Math.max(1, page-1), page===1);
+
+    const windowSize = 5;
+    const start = Math.max(1, page - Math.floor(windowSize/2));
+    const end = Math.min(totalPages, start + windowSize - 1);
+    for (let p = start; p <= end; p++) addBtn(String(p), p, false, p===page);
+
+    addBtn("›", Math.min(totalPages, page+1), page===totalPages);
+    addBtn("»", totalPages, page===totalPages);
+  }
+
+  function getFilteredGroups() {
+    const vinInput = document.getElementById("vinQuickSearch");
+    const needle = (vinInput?.value || "").trim().toUpperCase();
+
+    let groups = needle
+      ? baseGroups.filter(g => g.vin.toUpperCase().includes(needle))
+      : baseGroups.slice();
+
+    // применим колонночные фильтры
+    groups = groups.filter(g => passesFilters(g));
+    return groups;
+  }
+
+  // Построить двумерный массив (AOA) и список слияний Excel для краткого отчёта
+  function buildBriefAOAAndMerges() {
+    const groups = getFilteredGroups();
+
+    const headers = [
+      "VIN", "Бренд", "Модель", "Цвет кузова", "Код комплектации",
+      "Дата", "Время", "Кто сохранил", "Есть ли невозможные дефекты к исправленю?", "Количество"
+    ];
+    const aoa = [headers];
+    const merges = [];
+
+    // Начинаем с 1, т.к. 0 — шапка
+    let rowCursor = 1;
+
+    for (const g of groups) {
+      // данные "шапки" группы берём из первой строки
+      const firstTr = g.items[0].tr;
+      const vin         = firstTr.dataset.vin || "";
+      const brand       = firstTr.dataset.brand || "";
+      const model       = firstTr.dataset.model || "";
+      const body_color  = firstTr.dataset.body_color || "";
+      const config_code = firstTr.dataset.config_code || "";
+      const yesno       = (firstTr.dataset.impossible_yesno || "").trim(); // "Да"/"Нет"
+      const impRaw      = firstTr.dataset.impossible;
+      const impNum      = Number(String(impRaw ?? "").trim());
+      const impDisplay  = (yesno === "Да" && Number.isFinite(impNum) && impNum > 0) ? impNum : "";
+
+      const groupStart = rowCursor;              // первая строка группы в листе
+      const rowsCount  = g.items.length;
+
+      // Строки группы (дата/время/кто — индивидуальные; VIN/бренд/модель/цвет/код — как в таблице: только в первой)
+      g.items.forEach((rm, idx) => {
+        const tr = rm.tr;
+        const date = tr.dataset.date || "";
+        const time = tr.dataset.time || "";
+        const added_by = tr.dataset.added_by || "";
+
+        if (idx === 0) {
+          aoa.push([vin, brand, model, body_color, config_code, date, time, added_by, yesno, impDisplay]);
+        } else {
+          // как при rowspan: первые 5 колонок пустые
+          aoa.push(["", "", "", "", "", date, time, added_by, yesno, impDisplay]);
+        }
+        rowCursor++;
+      });
+
+      // Если в группе несколько строк — делаем вертикальные объединения по первым 5 колонкам
+      if (rowsCount > 1) {
+        for (let c = 0; c <= 4; c++) {
+          merges.push({
+            s: { r: groupStart,           c },
+            e: { r: groupStart + rowsCount - 1, c }
+          });
+        }
+        // Колонка "Есть невозможные" тоже одинаковая на группу — можно слить (необязательно)
+        merges.push({
+          s: { r: groupStart, c: 8 },
+          e: { r: groupStart + rowsCount - 1, c: 8 }
+        });
+        // Колонка "Количество" в кратком отчёте у нас тоже одинаковая на VIN — тоже можно слить
+        merges.push({
+          s: { r: groupStart, c: 9 },
+          e: { r: groupStart + rowsCount - 1, c: 9 }
+        });
+      }
+    }
+
+    return { aoa, merges };
+  }
+
+  // Выгрузка краткого отчёта в .xlsx
+  function exportBriefReport() {
+    try {
+      const { aoa, merges } = buildBriefAOAAndMerges();
+
+      // Создаём лист
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // Слияния ячеек (группировка VIN и пр.)
+      ws['!merges'] = merges;
+
+      // Ширины колонок — чтобы смотрелось аккуратно
+      ws['!cols'] = [
+        { wch: 25 }, // VIN
+        { wch: 15 }, // Бренд
+        { wch: 20 }, // Модель
+        { wch: 17 }, // Цвет
+        { wch: 30 }, // Код компл.
+        { wch: 15 }, // Дата
+        { wch: 10 }, // Время
+        { wch: 15 }, // Кто сохранил
+        { wch: 35 }, // Есть невозможные
+        { wch: 10 }, // Количество
+      ];
+
+      // Книга и файл
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Документация");
+
+      const now = new Date();
+      const pad2 = (n) => String(n).padStart(2, "0");
+      const fname = `documentation_brief_${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}_${pad2(now.getHours())}-${pad2(now.getMinutes())}.xlsx`;
+
+      XLSX.writeFile(wb, fname);
+    } catch (err) {
+      console.error("Export failed:", err);
+
+      // Простейший запасной вариант: CSV (если нет XLSX)
+      try {
+        const { aoa } = buildBriefAOAAndMerges();
+        const csv = aoa.map(row => row.map(cell => {
+          const s = String(cell ?? "");
+          if (s.includes(";") || s.includes('"') || s.includes("\n")) {
+            return `"${s.replace(/"/g, '""')}"`;
+          }
+          return s;
+        }).join(";")).join("\n");
+
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "documentation_brief.csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch(e2) {
+        alert("Не удалось сформировать файл отчёта.");
+      }
+    }
+  }
+
+  window.exportBriefReport = exportBriefReport;
+
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp('(^|;\\s*)' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+
+  // собрать текущее состояние фильтров и поиска VIN
+  function buildServerFilterPayload() {
+    const vinQuery = (document.getElementById("vinQuickSearch")?.value || "").trim();
+
+    const toArray = (setOrNull) =>
+      (setOrNull && setOrNull.size ? Array.from(setOrNull) : null);
+
+    const date = filters.date
+      ? {
+          from: tsToYMD(filters.date.fromTs) || null, // 'YYYY-MM-DD' или null
+          to:   tsToYMD(filters.date.toTs)   || null,
+        }
+      : null;
+
+    return {
+      vin_query: vinQuery || null,
+      filters: {
+        brand:       toArray(filters.brand),
+        model:       toArray(filters.model),
+        body_color:  toArray(filters.body_color),
+        config_code: toArray(filters.config_code),
+        added_by:    toArray(filters.added_by),
+        yesno:       toArray(filters.yesno),       // значения "Да"/"Нет"
+        impossible:  toArray(filters.impossible),  // числа как строки — ок
+        date,
+      },
+    };
+  }
+
+  // ---- сам экспорт расширенной версии ----
+  async function exportFullReport() {
+    const csrftoken = getCookie("csrftoken");
+    const vins = getFilteredVINs();
+    if (!vins.length) {
+      alert("По текущим фильтрам нет данных для выгрузки.");
+      return;
+    }
+
+    const fullItem = document.querySelector("#exportFull");
+    const btn = document.querySelector("#btnExportExcel");
+    fullItem?.classList.add("disabled");
+    btn?.classList.add("disabled");
+
+    try {
+      const res = await fetch(EXPORT_ADVANCED_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrftoken || "",
+        },
+        body: JSON.stringify({ vins_json: vins }), // ← именно это поле ждёт сервер
+      });
+
+      if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+
+      const blob = await res.blob();
+      let filename = "documentation_advanced.xlsx";
+      const cd = res.headers.get("Content-Disposition");
+      if (cd) {
+        const m = /filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i.exec(cd);
+        if (m) filename = decodeURIComponent(m[1] || m[2]);
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Не удалось сформировать расширенный отчёт.\n" + err.message);
+    } finally {
+      fullItem?.classList.remove("disabled");
+      btn?.classList.remove("disabled");
+    }
+  }
+
+  // Отправка расширенной выгрузки с явным списком грейдов
+  window.exportExtendedXlsxWithGrades = async function(grades) {
+    const vins = getFilteredVINs();
+    if (!vins.length) {
+      alert("По текущим фильтрам нет данных для выгрузки.");
+      return;
+    }
+    const csrftoken = getCookie("csrftoken");
+
+    const fullItem = document.querySelector("#exportFull");
+    const btn = document.querySelector("#btnExportExcel");
+    fullItem?.classList.add("disabled");
+    btn?.classList.add("disabled");
+
+    try {
+      const res = await fetch(EXPORT_ADVANCED_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrftoken || "",
+        },
+        body: JSON.stringify({
+          vins_json: vins,
+          grades: Array.isArray(grades) ? grades : undefined, // сервер сам трактует undefined как "все"
+        }),
+      });
+
+      if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+
+      const blob = await res.blob();
+      let filename = "documentation_advanced.xlsx";
+      const cd = res.headers.get("Content-Disposition");
+      if (cd) {
+        const m = /filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i.exec(cd);
+        if (m) filename = decodeURIComponent(m[1] || m[2]);
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Не удалось сформировать расширенный отчёт.\n" + err.message);
+    } finally {
+      fullItem?.classList.remove("disabled");
+      btn?.classList.remove("disabled");
+    }
+  };
+
+  window.exportFullReport = exportFullReport;
+
+  // ── основной рендер (rowspan VIN/Бренд/Модель + зебра) ──
+  function render() {
+    tbody.innerHTML = "";
+
+    currentGroups = (function refreshAfterFilters() {
+      // начинаем с baseGroups + VIN строкового фильтра
+      const vinInput = document.getElementById("vinQuickSearch");
+      const needle = (vinInput?.value || "").trim().toUpperCase();
+      let groups = needle ? baseGroups.filter(g => g.vin.toUpperCase().includes(needle)) : baseGroups.slice();
+      // применим колонночные фильтры
+      groups = groups.filter(g => passesFilters(g));
+      return groups;
+    })();
+
+    const total = currentGroups.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    currentPage = Math.min(currentPage, totalPages);
+    const start = (currentPage - 1) * pageSize;
+    const end = Math.min(start + pageSize, total);
+
+    for (let gi = start; gi < end; gi++) {
+      const group = currentGroups[gi];
+      const rows = group.items;
+      const yesnoVal = (getGroupValue(group, "yesno") || "").trim().toLowerCase();
+      const rowClass = (yesnoVal === "да") ? "bg-group-yes" : "bg-group-no";
+
+      rows.forEach((rm, idx) => {
+        const tr = rm.tr.cloneNode(true);
+        tr.classList.add(rowClass);
+
+        if (idx === 0) {
+          tr.cells[COLS.vin].rowSpan         = rows.length;
+          tr.cells[COLS.brand].rowSpan       = rows.length;
+          tr.cells[COLS.model].rowSpan       = rows.length;
+          tr.cells[COLS.body_color].rowSpan  = rows.length;   // ← НОВОЕ
+          tr.cells[COLS.config_code].rowSpan = rows.length;   // ← НОВОЕ
+          tbody.appendChild(tr);
+        } else {
+          [COLS.config_code, COLS.body_color, COLS.model, COLS.brand, COLS.vin]
+            .sort((a,b)=>b-a)
+            .forEach(i => tr.deleteCell(i));
+          tbody.appendChild(tr);
+        }
+      });
+    }
+
+    renderPager(total, currentPage, pageSize);
+  }
+
+  // ── сортировка по заголовкам (по группе) ──────────
+  function sortByHeader(colIdx) {
+    // VIN сортируем по названию VIN
+    if (colIdx === COLS.vin) {
+      const dir = (sortState.col === colIdx) ? -sortState.dir : 1;
+      sortState = { col: colIdx, dir };
+      currentGroups.sort((a,b) => dir * a.vin.localeCompare(b.vin, "ru", { sensitivity:"base" }));
+      currentPage = 1;
+      render();
+      updateSortIndicators();
+      return;
+    }
+
+    // Остальные — по значению первой строки группы
+    const dir = (sortState.col === colIdx) ? -sortState.dir : 1;
+    sortState = { col: colIdx, dir };
+
+    currentGroups.sort((ga, gb) => {
+      const ra = ga.items[0].tr.cells[colIdx]?.textContent.trim() || "";
+      const rb = gb.items[0].tr.cells[colIdx]?.textContent.trim() || "";
+
+      if (colIdx === COLS.impossible) {
+        const na = parseNum(ra), nb = parseNum(rb);
+        if (na === null && nb === null) return 0;
+        if (na === null) return 1;
+        if (nb === null) return -1;
+        return dir * (na - nb);
+      }
+      return dir * ra.localeCompare(rb, "ru", { sensitivity:"base" });
+    });
+
+    currentPage = 1;
+    render();
+    updateSortIndicators();
+  }
+
+  function updateSortIndicators() {
+    if (!thead) return;
+    const ths = Array.from(thead.querySelectorAll("th"));
+    ths.forEach((th, idx) => {
+      th.classList.remove("sorted-asc", "sorted-desc");
+      if (idx === sortState.col) th.classList.add(sortState.dir === 1 ? "sorted-asc" : "sorted-desc");
+    });
+  }
+
+  // ── поповер фильтра ─────────────────────────────────
+  let openedFilterPopover = null;
+
+  // глобальное закрытие по клику вне
+  document.addEventListener("click", function docClick(e) {
+    if (openedFilterPopover &&
+        !openedFilterPopover.contains(e.target) &&
+        !e.target.closest(".th-filter-btn")) {
+      openedFilterPopover.remove();
+      openedFilterPopover = null;
+    }
+  });
+
+  function openFilterPopover(anchorBtn, key) {
+    if (openedFilterPopover) {
+      openedFilterPopover.remove();
+      openedFilterPopover = null;
+    }
+
+    const vinInput = document.getElementById("vinQuickSearch");
+    const vinNeedle = (vinInput?.value || "").trim().toUpperCase();
+
+    // Базовый набор по VIN
+    let previewGroups = vinNeedle
+      ? baseGroups.filter(g => g.vin.toUpperCase().includes(vinNeedle))
+      : baseGroups.slice();
+
+    // Учитываем активные фильтры, КРОМЕ текущего key (связанные фильтры)
+    previewGroups = previewGroups.filter(g => {
+      for (const [k, set] of Object.entries(filters)) {
+        if (k === key) continue;
+        if (k !== "date") {
+          if (set && set.size) {
+            const v = getGroupValue(g, k);
+            if (!set.has(v)) return false;
+          }
+        } else {
+          const r = filters.date;
+          if (r && (r.fromTs || r.toTs)) {
+            const dStr = getGroupValue(g, "date");
+            const dTs = parseDDMMYYYY(dStr);
+            if (dTs == null) return false;
+            if (r.fromTs && dTs < r.fromTs) return false;
+            if (r.toTs   && dTs > r.toTs)   return false;
+          }
+        }
+      }
+      return true;
+    });
+
+    const pop = document.createElement("div");
+    pop.className = "col-filter-popover";
+    document.body.appendChild(pop);
+    openedFilterPopover = pop;
+
+    // позиционирование у кнопки
+    const r = anchorBtn.getBoundingClientRect();
+    pop.style.top  = `${window.scrollY + r.bottom + 6}px`;
+    pop.style.left = `${window.scrollX + r.left}px`;
+
+    // <<< ВАЖНО: клики внутри поповера не закрывают его >>>
+    pop.addEventListener("click", (e) => e.stopPropagation());
+
+    if (key === "date") {
+      // Диапазон дат из доступных значений
+      const datesTs = Array.from(new Set(previewGroups
+        .map(g => parseDDMMYYYY(getGroupValue(g, "date")))
+        .filter(v => v != null)))
+        .sort((a,b)=>a-b);
+
+      const minTs = datesTs[0] ?? null;
+      const maxTs = datesTs[datesTs.length-1] ?? null;
+
+      const current = filters.date || { fromTs:null, toTs:null };
+
+      pop.innerHTML = `
+        <div class="cf-head" style="align-items:center; justify-content:space-between;">
+          <strong>Диапазон даты</strong>
+        </div>
+        <div class="cf-body">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">С</label>
+              <input type="date" class="form-control cf-date-from"
+                     min="${tsToYMD(minTs)}" max="${tsToYMD(maxTs)}"
+                     value="${tsToYMD(current.fromTs)}">
+            </div>
+            <div class="col-6">
+              <label class="form-label">По</label>
+              <input type="date" class="form-control cf-date-to"
+                     min="${tsToYMD(minTs)}" max="${tsToYMD(maxTs)}"
+                     value="${tsToYMD(current.toTs)}">
+            </div>
+          </div>
+        </div>
+        <div class="cf-actions">
+          <button type="button" class="btn btn-sm btn-primary cf-apply">Применить</button>
+          <button type="button" class="btn btn-sm btn-light cf-cancel">Отмена</button>
+          <button type="button" class="btn btn-sm btn-outline-danger ms-auto cf-reset">Сбросить</button>
+        </div>
+      `;
+
+      const fromEl = pop.querySelector(".cf-date-from");
+      const toEl   = pop.querySelector(".cf-date-to");
+
+      pop.querySelector(".cf-apply").addEventListener("click", (e) => {
+        e.stopPropagation();
+        const fromTs = parseYMD(fromEl.value);
+        const toStart = parseYMD(toEl.value);
+        // конец дня для inclusive
+        const toTs = (toStart != null) ? (toStart + 24*60*60*1000 - 1) : null;
+
+        // авто-обмен, если from > to
+        let f = fromTs, t = toTs;
+        if (f != null && t != null && f > t) [f, t] = [t, f];
+
+        if (f == null && t == null) {
+          filters.date = null;
+          anchorBtn.classList.remove("filter-active");
+        } else {
+          filters.date = { fromTs: f, toTs: t };
+          anchorBtn.classList.add("filter-active");
+        }
+        applyVinFilter(document.getElementById("vinQuickSearch")?.value || "");
+        if (openedFilterPopover) {
+          openedFilterPopover.remove();
+          openedFilterPopover = null;
+        }
+      });
+
+      pop.querySelector(".cf-reset").addEventListener("click", (e) => {
+        e.stopPropagation();
+        filters.date = null;
+        anchorBtn.classList.remove("filter-active");
+        applyVinFilter(document.getElementById("vinQuickSearch")?.value || "");
+        if (openedFilterPopover) {
+          openedFilterPopover.remove();
+          openedFilterPopover = null;
+        }
+      });
+
+      pop.querySelector(".cf-cancel").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (openedFilterPopover) {
+          openedFilterPopover.remove();
+          openedFilterPopover = null;
+        }
+      });
+
+    } else {
+      // Чек-лист для brand/model/added_by/yesno
+      let values = Array.from(new Set(previewGroups.map(g => getGroupValue(g, key))))
+        .filter(v => v !== ""); // не выбрасываем "0", только пустые строки
+
+      if (key === "impossible") {
+        // Числовая сортировка
+        values = values
+          .map(v => Number(String(v).trim()))
+          .filter(n => Number.isFinite(n))
+          .sort((a, b) => a - b)
+          .map(n => String(n)); // возвращаем строки, чтобы value чекбоксов совпадал с dataset
+      } else {
+        // Обычная (строковая) сортировка
+        values.sort((a, b) => a.localeCompare(b, "ru", { sensitivity: "base" }));
+      }
+
+      pop.innerHTML = `
+        <div class="cf-head">
+          <input type="text" class="form-control cf-search" placeholder="Поиск по значениям...">
+          <button type="button" class="btn btn-outline-secondary btn-sm cf-select-all">Все</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm cf-clear-all">Очистить</button>
+        </div>
+        <div class="cf-body"></div>
+        <div class="cf-actions">
+          <button type="button" class="btn btn-sm btn-primary cf-apply">Применить</button>
+          <button type="button" class="btn btn-sm btn-light cf-cancel">Отмена</button>
+          <button type="button" class="btn btn-sm btn-outline-danger ms-auto cf-reset">Сбросить фильтр</button>
+        </div>
+      `;
+
+      const body = pop.querySelector(".cf-body");
+      const searchInput = pop.querySelector(".cf-search");
+      const preselected = filters[key] ? new Set(filters[key]) : null;
+
+      function renderList(list) {
+        body.innerHTML = "";
+        list.forEach(val => {
+          const id = `cf-${key}-${btoa(encodeURIComponent(val)).replace(/=+/g,"")}`;
+          const row = document.createElement("div");
+          row.className = "form-check";
+          row.innerHTML = `
+            <input class="form-check-input" type="checkbox" id="${id}" value="${val}">
+            <label class="form-check-label" for="${id}">${val}</label>
+          `;
+          const chk = row.querySelector("input");
+          if (!preselected || preselected.has(val)) chk.checked = true;
+          body.appendChild(row);
+        });
+      }
+      renderList(values);
+
+      searchInput.addEventListener("input", (e) => {
+        e.stopPropagation();
+        const q = searchInput.value.trim().toLowerCase();
+        const list = q ? values.filter(v => v.toLowerCase().includes(q)) : values;
+        renderList(list);
+      });
+
+      pop.querySelector(".cf-select-all").addEventListener("click", (e) => {
+        e.stopPropagation();
+        body.querySelectorAll("input[type=checkbox]").forEach(ch => ch.checked = true);
+      });
+      pop.querySelector(".cf-clear-all").addEventListener("click", (e) => {
+        e.stopPropagation();
+        body.querySelectorAll("input[type=checkbox]").forEach(ch => ch.checked = false);
+      });
+
+      pop.querySelector(".cf-apply").addEventListener("click", (e) => {
+        e.stopPropagation();
+        const checked = Array.from(body.querySelectorAll("input[type=checkbox]:checked")).map(ch => ch.value);
+        if (checked.length === values.length || checked.length === 0) {
+          filters[key] = null;
+          anchorBtn.classList.remove("filter-active");
+        } else {
+          filters[key] = new Set(checked);
+          anchorBtn.classList.add("filter-active");
+        }
+        applyVinFilter(document.getElementById("vinQuickSearch")?.value || "");
+        if (openedFilterPopover) { openedFilterPopover.remove(); openedFilterPopover = null; }
+      });
+
+      pop.querySelector(".cf-reset").addEventListener("click", (e) => {
+        e.stopPropagation();
+        filters[key] = null;
+        anchorBtn.classList.remove("filter-active");
+        applyVinFilter(document.getElementById("vinQuickSearch")?.value || "");
+        if (openedFilterPopover) { openedFilterPopover.remove(); openedFilterPopover = null; }
+      });
+
+      pop.querySelector(".cf-cancel").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (openedFilterPopover) { openedFilterPopover.remove(); openedFilterPopover = null; }
+      });
+    }
+  }
+
+
+  // ── init ───────────────────────────────────────────
+  createToolbar();
+  render();
+
+  if (thead) {
+    Array.from(thead.querySelectorAll("th")).forEach(th => {
+      th.style.cursor = "default";
+    });
+  }
+
+  document.querySelectorAll(".th-filter-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openFilterPopover(btn, btn.dataset.key); // brand | model | date | added_by | yesno
+    });
+  });
+
+})();
+
+
+
+(() => {
+  const pop = document.querySelector('#doc-toolbar-actions #grade-popover')
+         || document.getElementById('grade-popover');
+  const btnSimple  = document.getElementById('exportBrief');
+  const btnExtended= document.getElementById('exportFull');
+  const btnApply   = document.getElementById('gp-apply');
+  const btnCancel  = document.getElementById('gp-cancel');
+  const cbAll      = document.getElementById('gp-all');
+  const itemCbs    = Array.from(document.querySelectorAll('.gp-item'));
+  const toggler    = document.getElementById('btnExportExcel'); // ← объявляем ОДИН раз
+
+  // --- память выбора
+  const LS_KEY = 'doc_export_grades';
+  function resetAll(){ cbAll.checked = true; itemCbs.forEach(cb => cb.checked = true); }
+  function loadSaved(){
+    try{
+      const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+      if (saved && Array.isArray(saved) && saved.length){
+        const allVals = ['V1+','V1','V2','V3'];
+        const allOn = allVals.every(v => saved.includes(v));
+        cbAll.checked = allOn;
+        itemCbs.forEach(cb => cb.checked = allOn || saved.includes(cb.value));
+      } else resetAll();
+    }catch(e){ resetAll(); }
+  }
+  function saveSelected(grades){ localStorage.setItem(LS_KEY, JSON.stringify(grades||[])); }
+  function getSelectedGrades(){
+    const vals = itemCbs.filter(cb => cb.checked).map(cb => cb.value);
+    const order = {'V1+':0,'V1':1,'V2':2,'V3':3};
+    return vals.sort((a,b)=>(order[a]??9)-(order[b]??9));
+  }
+
+  // синхронизация чекбоксов
+  cbAll.addEventListener('change', () => itemCbs.forEach(cb => (cb.checked = cbAll.checked)));
+  itemCbs.forEach(cb => cb.addEventListener('change', () => { cbAll.checked = itemCbs.every(x=>x.checked); }));
+
+  // --- показ/скрытие поповера
+  let currentMode = null; // 'simple' | 'extended'
+  let currentAnchor = null;
+
+  function onOutside(e){
+    if (!pop.contains(e.target) && e.target !== currentAnchor) hidePopover();
+  }
+  function showPopover(anchor, mode){
+    currentMode = mode;
+    currentAnchor = anchor;
+    loadSaved();
+
+    const r = anchor.getBoundingClientRect();
+    pop.style.left = (r.right + 8) + 'px';
+    pop.style.top  = r.top + 'px';
+    pop.classList.remove('d-none');
+
+    document.addEventListener('mousedown', onOutside);
+  }
+  function hidePopover(){
+    pop.classList.add('d-none');
+    currentMode = null;
+    currentAnchor = null;
+    document.removeEventListener('mousedown', onOutside);
+  }
+  window.addEventListener('resize', () => { if (!pop.classList.contains('d-none') && currentAnchor) showPopover(currentAnchor, currentMode); });
+  window.addEventListener('scroll', () => { if (!pop.classList.contains('d-none') && currentAnchor) showPopover(currentAnchor, currentMode); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.classList.contains('d-none')) hidePopover(); });
+
+  // делаем функцию показа доступной первому IIFE (меню)
+  window.__showDocGradePopover = showPopover;
+
+  // --- кнопки поповера
+  btnCancel.addEventListener('click', () => {
+    hidePopover();
+    try { bootstrap.Dropdown.getOrCreateInstance(toggler).hide(); } catch(_) {}
+  });
+
+  btnApply.addEventListener('click', async () => {
+    const grades = getSelectedGrades();
+    saveSelected(grades);
+
+    if (!grades.length) {
+      hidePopover();
+      try { bootstrap.Dropdown.getOrCreateInstance(toggler).hide(); } catch(_) {}
+      return;
+    }
+
+    try {
+      if (currentMode === 'simple') {
+        if (typeof window.exportSimpleXlsxWithGrades === 'function') {
+          await window.exportSimpleXlsxWithGrades(grades);
+        } else {
+          await window.exportBriefReport?.();
+        }
+      } else if (currentMode === 'extended') {
+        if (typeof window.exportExtendedXlsxWithGrades === 'function') {
+          await window.exportExtendedXlsxWithGrades(grades);
+        } else {
+          await window.exportFullReport?.();
+        }
+      }
+    } finally {
+      hidePopover();
+      try { bootstrap.Dropdown.getOrCreateInstance(toggler).hide(); } catch(_) {}
+    }
+  });
+})();
+
+
+
+</script>
+
+
+{% endblock %}

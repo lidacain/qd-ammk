@@ -1,0 +1,118 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container py-3">
+  <h4 class="mb-3">
+    Показатели — {{ section|upper }} / {{ metric }} / {{ metric }}
+    <small class="text-muted">
+      ({{ filters.start_date }} — {{ filters.end_date }})
+    </small>
+  </h4>
+  <div class="d-flex justify-content-end mb-2">
+    <a id="btn-export" class="btn btn-outline-success btn-sm" target="_blank" rel="noopener">
+      <i class="bi bi-download"></i> Выгрузить в Excel
+    </a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle" id="mes-table">
+      <thead><tr id="mes-thead"></tr></thead>
+      <tbody id="mes-tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mt-2">
+    <div id="mes-pagination-info" class="small text-muted"></div>
+    <div class="btn-group">
+      <button id="mes-prev" class="btn btn-outline-secondary btn-sm">Назад</button>
+      <button id="mes-next" class="btn btn-outline-secondary btn-sm">Вперёд</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const api = "{{ api_table_url }}";
+  const exportUrl = "{{ api_table_export_url|default:'/api/mes/table/export' }}";
+  const filters = {{ filters|safe }};
+  const section = "{{ section }}";
+  const metric = "{{ metric }}";
+
+  function buildParams(obj){
+    const p = new URLSearchParams();
+    p.set("section", section);
+    p.set("metric", metric);
+    if (filters.start_date) p.set("start_date", filters.start_date);
+    if (filters.end_date)   p.set("end_date", filters.end_date);
+    (filters.brands || []).forEach(b => p.append("brand", b));
+    (filters.models || []).forEach(m => p.append("model", m));
+    if (filters.vin)  p.set("vin", filters.vin);
+    if (filters.line) p.set("line", filters.line);
+    p.set("page", filters.page || 1);
+    p.set("per_page", filters.per_page || 100);
+    return p.toString();
+  }
+
+  function buildExportParams(base){
+    const p = new URLSearchParams();
+    p.set("section", section);
+    p.set("metric", metric);
+    if (base.start_date) p.set("start_date", base.start_date);
+    if (base.end_date)   p.set("end_date", base.end_date);
+    (base.brands || []).forEach(b => p.append("brand", b));
+    (base.models || []).forEach(m => p.append("model", m));
+    if (base.vin)  p.set("vin", base.vin);
+    if (base.line) p.set("line", base.line);
+    return p.toString();
+  }
+
+  async function loadPage(page){
+    filters.page = page;
+    const url = api + "?" + buildParams(filters);
+    const res = await fetch(url);
+    if(!res.ok){ console.error(await res.text()); return; }
+    const data = await res.json();
+
+    // header
+    const thead = document.getElementById("mes-thead");
+    thead.innerHTML = "";
+    (data.columns || []).forEach(col=>{
+      const th = document.createElement("th");
+      th.textContent = col.title || col.key;
+      thead.appendChild(th);
+    });
+
+    // body
+    const tbody = document.getElementById("mes-tbody");
+    tbody.innerHTML = "";
+    (data.items || []).forEach(row=>{
+      const tr = document.createElement("tr");
+      (data.columns || []).forEach(col=>{
+        const td = document.createElement("td");
+        td.textContent = (row[col.key] ?? "");
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+    // pager
+    const pag = data.pagination || {page:1, per_page:0, total:0};
+    const info = document.getElementById("mes-pagination-info");
+    const start = (pag.total === 0) ? 0 : ((pag.page-1)*pag.per_page + 1);
+    const end   = Math.min(pag.page*pag.per_page, pag.total);
+    info.textContent = `Показано ${start}–${end} из ${pag.total}`;
+
+    document.getElementById("mes-prev").disabled = (pag.page <= 1);
+    document.getElementById("mes-next").disabled = (pag.page*pag.per_page >= pag.total);
+  }
+
+  document.getElementById("mes-prev").addEventListener("click", ()=> loadPage((filters.page||1)-1));
+  document.getElementById("mes-next").addEventListener("click", ()=> loadPage((filters.page||1)+1));
+
+  const btn = document.getElementById("btn-export");
+  if (btn) btn.href = exportUrl + "?" + buildExportParams(filters);
+  loadPage(filters.page || 1);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,424 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% block title %}УУД — отчёт за {{ date_local }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <a href="javascript:history.back()" class="btn btn-outline-secondary mb-3">← Назад</a>
+
+  <div class="d-flex align-items-center gap-3 mb-2">
+    <h4 class="m-0">УУД — отчёт за {{ date_local }}</h4>
+  </div>
+  <br>
+
+  <!-- Вкладки -->
+  <ul class="nav nav-pills mb-3" id="uudTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="tab-step1" data-bs-toggle="pill" data-bs-target="#pane-step1" type="button" role="tab">
+        Отдали на УУД <span class="badge bg-light text-dark ms-2">{{ step1_count }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-step2" data-bs-toggle="pill" data-bs-target="#pane-step2" type="button" role="tab">
+        УУД начала ремонт <span class="badge bg-light text-dark ms-2">{{ step2_count }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-step3" data-bs-toggle="pill" data-bs-target="#pane-step3" type="button" role="tab">
+        Ждёт приёма на линию <span class="badge bg-light text-dark ms-2">{{ step3_count }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-step4" data-bs-toggle="pill" data-bs-target="#pane-step4" type="button" role="tab">
+        Линия приняла <span class="badge bg-light text-dark ms-2">{{ step4_count }}</span>
+      </button>
+    </li>
+  </ul>
+
+  <form class="row g-2 align-items-center mb-3" method="get" action="">
+    <div class="col-auto">
+      <label for="start" class="col-form-label">C:</label>
+    </div>
+    <div class="col-auto">
+      <input id="start" name="start" type="date" class="form-control"
+             value="{{ start_date|default:'' }}">
+    </div>
+    <div class="col-auto">
+      <label for="end" class="col-form-label">по:</label>
+    </div>
+    <div class="col-auto">
+      <input id="end" name="end" type="date" class="form-control"
+             value="{{ end_date|default:'' }}">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary" type="submit">Показать</button>
+      <a class="btn btn-outline-secondary" href="?">Сброс</a>
+    </div>
+  </form>
+
+  <div class="d-flex align-items-center gap-3 mb-2">
+    <h4 class="m-0">УУД — отчёт за {{ date_local }}</h4>
+
+    <a class="btn btn-success ms-auto"
+       href="{% url 'uud_report_export' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}">
+      Скачать Excel
+    </a>
+  </div>
+  <div class="uud-wide">
+    <div class="tab-content" id="uudTabsContent">
+      <!-- STEP 1 -->
+      <div class="tab-pane fade show active" id="pane-step1" role="tabpanel" aria-labelledby="tab-step1">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle" id="tbl-step1">
+            <thead class="table-dark">
+              <tr>
+                <th style="min-width:160px;">VIN</th>
+                <th style="min-width:130px;">Бренд</th>
+                <th style="min-width:140px;">Модель</th>
+                <th style="min-width:115px;">Дата</th>
+                <th style="min-width:95px;">Время</th>
+                <th style="min-width:135px;">Контролер</th>
+                <th style="min-width:140px;">Статус дефекта</th>
+                <th style="min-width:220px;">Деталь</th>
+                <th style="min-width:220px;">Дефект</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in step1_rows %}
+                <tr class="uud-row">
+                  <td class="font-monospace vin-cell">{{ r.vin }}</td>
+                  <td class="brand-cell">{{ r.brand }}</td>
+                  <td class="model-cell">{{ r.model }}</td>
+                  <td class="uud-date">{{ r.date }}</td>
+                  <td class="uud-time">{{ r.time }}</td>
+                  <td class="uud-by">{{ r.by }}</td>
+                  <td class="def-status">—</td>
+                  <td class="def-detail">—</td>
+                  <td class="def-defect">—</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">Нет данных за {{ date_local }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="tab-pane fade" id="pane-step2" role="tabpanel" aria-labelledby="tab-step2">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle" id="tbl-step2">
+            <thead class="table-light">
+              <tr>
+                <th>VIN</th><th>Бренд</th><th>Модель</th>
+                <th>Дата (УУД)</th><th>Время (УУД)</th><th>Контролер (УУД)</th>
+                <th>Статус дефекта</th><th>Деталь</th><th>Дефект</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in step2_rows %}
+                <tr class="uud-row">
+                  <td class="font-monospace vin-cell">{{ r.vin }}</td>
+                  <td class="brand-cell">{{ r.brand }}</td>
+                  <td class="model-cell">{{ r.model }}</td>
+                  <td class="uud-date">{{ r.date }}</td>
+                  <td class="uud-time">{{ r.time }}</td>
+                  <td class="uud-by">{{ r.by }}</td>
+                  <td class="def-status">—</td><td class="def-detail">—</td><td class="def-defect">—</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">Нет данных</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="tab-pane fade" id="pane-step3" role="tabpanel" aria-labelledby="tab-step3">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle" id="tbl-step3">
+            <thead class="table-light">
+              <tr>
+                <th>VIN</th><th>Бренд</th><th>Модель</th>
+                <th>Дата (УУД)</th><th>Время (УУД)</th><th>Контролер (УУД)</th>
+                <th>Статус дефекта</th><th>Деталь</th><th>Дефект</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in step3_rows %}
+                <tr class="uud-row">
+                  <td class="font-monospace vin-cell">{{ r.vin }}</td>
+                  <td class="brand-cell">{{ r.brand }}</td>
+                  <td class="model-cell">{{ r.model }}</td>
+                  <td class="uud-date">{{ r.date }}</td>
+                  <td class="uud-time">{{ r.time }}</td>
+                  <td class="uud-by">{{ r.by }}</td>
+                  <td class="def-status">—</td><td class="def-detail">—</td><td class="def-defect">—</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">Нет данных</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div class="tab-pane fade" id="pane-step4" role="tabpanel" aria-labelledby="tab-step4">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle" id="tbl-step4">
+            <thead class="table-light">
+              <tr>
+                <th>VIN</th><th>Бренд</th><th>Модель</th>
+                <th>Дата (УУД)</th><th>Время (УУД)</th><th>Контролер (УУД)</th>
+                <th>Статус дефекта</th><th>Деталь</th><th>Дефект</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in step4_rows %}
+                <tr class="uud-row">
+                  <td class="font-monospace vin-cell">{{ r.vin }}</td>
+                  <td class="brand-cell">{{ r.brand }}</td>
+                  <td class="model-cell">{{ r.model }}</td>
+                  <td class="uud-date">{{ r.date }}</td>
+                  <td class="uud-time">{{ r.time }}</td>
+                  <td class="uud-by">{{ r.by }}</td>
+                  <td class="def-status">—</td><td class="def-detail">—</td><td class="def-defect">—</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">Нет данных</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- JSON с дефектами -->
+{{ defects_by_vin|json_script:"defects-json" }}
+<style>
+  /* выходим из "контейнера" и тянемся почти на всю ширину экрана */
+  .uud-wide{
+    width: 90vw;
+    margin-left: calc(50% - 45vw);
+  }
+  @media (min-width: 1600px){
+    .uud-wide{
+      width: 96vw;
+      margin-left: calc(50% - 48vw);
+    }
+  }
+
+  /* читаемость таблицы */
+  .uud-table{
+    table-layout: fixed;
+    width: 90%;
+  }
+  .uud-table thead th{
+    position: sticky; top: 0; z-index: 1;
+    background: #f8f9fa;
+  }
+  .uud-table th, .uud-table td{
+    white-space: nowrap;
+  }
+
+  /* выравнивание объединённых ячеек по центру */
+  .merge-center{
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+</style>
+<style>
+  /* цветные бейджи статусов */
+  .status-badge{display:inline-block;padding:.2rem .55rem;border-radius:9999px;font-weight:600;font-size:.85rem;line-height:1}
+  .status-impossible{background:#212529;color:#fff}     /* чёрный */
+  .status-resolved{background:#198754;color:#fff}       /* зелёный */
+  .status-not_resolved{background:#dc3545;color:#fff}   /* красный */
+  .status-checking{background:#ffc107;color:#212529}    /* жёлтый */
+  .status-empty{background:#e9ecef;color:#6c757d}       /* серый тире */
+
+  /* заметный разделитель между группами VIN (первая строка группы) */
+  tbody tr.group-sep > *{ border-top:2px solid rgba(0,0,0,.2) !important; }
+</style>
+<script>
+  // Карта: исходный статус -> {русский текст, css-класс}
+  const STATUS_MAP = {
+    impossible:   { text: 'Невозможно',   cls: 'status-impossible'   },
+    resolved:     { text: 'Устранено',    cls: 'status-resolved'     },
+    not_resolved: { text: 'Не устранено', cls: 'status-not_resolved' },
+    checking:     { text: 'Проверяется',  cls: 'status-checking'     },
+  };
+
+  function renderStatusCell(tr, statusRaw){
+    const s = (statusRaw || '').trim();
+    const map = STATUS_MAP[s];
+    const html = map
+      ? `<span class="status-badge ${map.cls}">${map.text}</span>`
+      : `<span class="status-badge status-empty">—</span>`;
+    const el = tr.querySelector('.def-status');
+    if (el) el.innerHTML = html;
+  }
+</script>
+<script>
+/* Заполняем 3 колонки по дефектам и разворачиваем VIN на несколько строк (по каждому дефекту). */
+(function attachDefectsMinimal(){
+  const defectsMap = (() => {
+    try { return JSON.parse(document.getElementById('defects-json').textContent || '{}'); }
+    catch(e){ return {}; }
+  })();
+
+  function expandTable(table){
+    const tbody = table.tBodies[0];
+    if (!tbody) return;
+    const baseRows = Array.from(tbody.querySelectorAll('tr.uud-row'));
+
+    baseRows.forEach(tr => {
+      const vin = (tr.querySelector('.vin-cell')?.textContent || '').trim().toUpperCase();
+      const defects = defectsMap[vin] || [];
+
+      if (!defects.length) return;
+
+      // первый дефект — вписываем в текущую строку
+      fillDefectCells(tr, defects[0]);
+
+      // остальные — отдельными строками
+      for (let i = 1; i < defects.length; i++){
+        const d = defects[i];
+        const clone = tr.cloneNode(true);
+        // чистим повторяющиеся ячейки VIN/бренд/модель/УУД
+        ['.vin-cell','.brand-cell','.model-cell','.uud-date','.uud-time','.uud-by']
+          .forEach(sel => { const c = clone.querySelector(sel); if (c) c.textContent = ''; });
+        fillDefectCells(clone, d);
+        tbody.insertBefore(clone, tr.nextSibling);
+      }
+    });
+  }
+
+  function fillDefectCells(tr, d){
+    renderStatusCell(tr, d.status);                       // <-- БЕЙДЖ статуса
+    setText(tr, '.def-detail', d.detail || '—');          // деталь
+    setText(tr, '.def-defect', d.defect || '—');          // дефект
+  }
+  function setText(tr, sel, txt){
+    const el = tr.querySelector(sel);
+    if (el) el.textContent = txt;
+  }
+
+  ['tbl-step1','tbl-step2','tbl-step3','tbl-step4'].forEach(id=>{
+    const t = document.getElementById(id);
+    if (t) {
+      expandTable(t);
+      applyRowspan(t);   // <--- добавили
+    }
+  });
+
+  /* Объединяем VIN/Бренд/Модель/Дата/Время/Контролер для последовательных строк одной группы
+     Группа определяется так же, как ты разворачивал дефекты: у первой строки ячейки заполнены,
+     у дополнительных — очищены (пустая строка). */
+  function applyRowspan(tbl){
+    const body = tbl.tBodies[0];
+    if (!body) return;
+
+    const mergeSelectors = ['.vin-cell','.brand-cell','.model-cell','.uud-date','.uud-time','.uud-by'];
+
+    let i = 0;
+    while (i < body.rows.length) {
+      const baseRow = body.rows[i];
+      const vinCell = baseRow.querySelector('.vin-cell');
+      // если строки таблицы без данных — пропускаем
+      if (!vinCell) { i++; continue; }
+
+      // считаем, сколько следующих строк входят в группу (у них пустой vin-cell)
+      let span = 1;
+      let j = i + 1;
+      while (j < body.rows.length) {
+        const nextVin = body.rows[j].querySelector('.vin-cell');
+        if (!nextVin) break; // защитимся от неожиданной разметки
+        if (nextVin.textContent.trim() !== '') break; // новая группа
+        span++; j++;
+      }
+
+      baseRow.classList.add('group-sep');
+
+      // на первой строке выставляем rowSpan и центрируем;
+      // в остальных строках удаляем ячейки, чтобы браузер «склеил» их визуально
+      mergeSelectors.forEach(sel => {
+        const cell = baseRow.querySelector(sel);
+        if (cell && span > 1) {
+          cell.rowSpan = span;
+          cell.classList.add('merge-center');
+        } else if (cell) {
+          cell.classList.add('merge-center');
+        }
+      });
+
+      for (let k = i + 1; k < i + span; k++) {
+        const row = body.rows[k];
+        mergeSelectors.forEach(sel => {
+          const c = row.querySelector(sel);
+          if (c) c.remove();
+        });
+      }
+      i += span;
+    }
+  }
+})();
+</script>
+<script>
+(function() {
+  // Сохраняем активную вкладку
+  const tabs = document.querySelectorAll('#uudTabs [data-bs-toggle="pill"]');
+  const key = 'uud_report_active_tab';
+  const saved = localStorage.getItem(key);
+  if (saved) {
+    const btn = document.querySelector(`#uudTabs [data-bs-target="${saved}"]`);
+    if (btn) new bootstrap.Tab(btn).show();
+  }
+  tabs.forEach(b => {
+    b.addEventListener('shown.bs.tab', (e) => {
+      const target = e.target.getAttribute('data-bs-target');
+      localStorage.setItem(key, target);
+      const pane = document.querySelector(target);
+      if (pane) updateShownCountersWithin(pane);
+    });
+  });
+
+  function filterTable(tableId, query) {
+    query = (query || '').trim().toLowerCase();
+    const tbl = document.getElementById(tableId);
+    if (!tbl) return { shown: 0, total: 0 };
+    const rows = Array.from(tbl.tBodies[0].rows);
+    let shown = 0;
+    rows.forEach(tr => {
+      const match = !query || tr.innerText.toLowerCase().includes(query);
+      tr.style.display = match ? '' : 'none';
+      if (match) shown++;
+    });
+    const total = rows.length;
+    const shownEl = document.getElementById(tableId + '-shown');
+    const totalEl = document.getElementById(tableId + '-total');
+    if (shownEl) shownEl.textContent = shown;
+    if (totalEl) totalEl.textContent = total;
+    return { shown, total };
+  }
+
+  function updateShownCountersWithin(pane) {
+    const input = pane.querySelector('.table-search');
+    if (!input) return;
+    filterTable(input.dataset.target, input.value);
+  }
+
+  // Инициализация для всех таблиц
+  ['tbl-step1','tbl-step2','tbl-step3','tbl-step4'].forEach(id => filterTable(id, ''));
+
+  // Обработчики поиска
+  document.querySelectorAll('.table-search').forEach(inp => {
+    const target = inp.dataset.target;
+    filterTable(target, '');
+    inp.addEventListener('input', () => filterTable(target, inp.value));
+  });
+})();
+</script>
+{% endblock %}

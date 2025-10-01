@@ -1,0 +1,37 @@
+{% extends "users/base.html" %}
+
+{% block title %}Результаты ремонта УУД{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <a href="{% url 'notifications' %}" class="btn btn-secondary my-3">⬅ Назад к уведомлениям</a>
+
+    <h2 class="text-center mb-4">Результаты ремонта по VIN {{ vin }}</h2>
+
+    {% if uud_data %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <p><strong>Описание ремонта:</strong> {{ uud_data.extra_data.repair_description }}</p>
+                <p><strong>Ответственный контроллер:</strong> {{ uud_data.extra_data.controller }}</p>
+                <p><strong>Дата записи:</strong> {{ uud_data.date_added|default:"—" }}</p>
+            </div>
+        </div>
+
+        <h4>Фото устранённого дефекта</h4>
+        <div class="row">
+            {% for photo_url in uud_data.extra_data.repair_photos %}
+                <div class="col-md-4 mb-3">
+                    <img src="{{ photo_url }}" class="img-fluid rounded shadow-sm" alt="Фото ремонта">
+                </div>
+            {% empty %}
+                <p>Фото отсутствуют.</p>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-warning text-center">
+            Нет данных по устранению дефекта на УУД для данного VIN.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,207 @@
+{% extends "users/base.html" %}
+{% load custom_filters %}
+{% block title %}Отчёт — {{ post_name }}{% endblock %}
+
+{% block content %}
+
+<style>
+    .brands-models .form-check-input {
+        width: 22px;
+        height: 22px;
+    }
+
+    .form-check {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        height: 40px;
+    }
+
+    .brands-models .form-check-label {
+        font-size: 1.1rem;
+    }
+
+    .choices__inner {
+        min-height: 40px;
+        padding: 4px 8px;
+    }
+
+    .form-label {
+        font-size: 0.95rem;
+    }
+</style>
+
+<div class="container py-4">
+
+    <!-- Назад -->
+    <div class="mb-3">
+        <a href="{% url 'assembly_workshop_dashboard' %}" class="btn btn-light">
+            ← Назад
+        </a>
+    </div>
+
+    <h3 class="text-center mb-4 fw-bold" style="color: white">Отчет – {{ post_name }}</h3>
+
+    <form method="get" class="mb-4">
+        <input type="hidden" name="post" value="{{ post_name }}">
+        <div class="card p-3 bg-white shadow-sm">
+
+            <!-- Ряд с датами -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="start_date" class="form-label fw-bold">С:</label>
+                    <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="end_date" class="form-label fw-bold">По:</label>
+                    <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date }}">
+                </div>
+            </div>
+
+            <!-- Бренды и модели -->
+            <div class="row brands-models">
+                <!-- Бренды -->
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Бренды:</label>
+                    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-2">
+                        {% for brand in all_brands %}
+                        <div class="col">
+                            <div class="form-check d-flex align-items-center gap-2">
+                                <input class="form-check-input" type="checkbox" name="brand" value="{{ brand }}"
+                                       id="brand_{{ forloop.counter }}" onchange="this.form.submit()"
+                                       {% if brand in selected_brands %}checked{% endif %}>
+                                <label class="form-check-label" for="brand_{{ forloop.counter }}">
+                                    {{ brand }}
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Модели -->
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Модели:</label>
+                    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-2">
+                        {% for model in all_models %}
+                        <div class="col">
+                            <div class="form-check d-flex align-items-center gap-2">
+                                <input class="form-check-input" type="checkbox" name="model" value="{{ model }}"
+                                       id="model_{{ forloop.counter }}" onchange="this.form.submit()"
+                                       {% if model in selected_models %}checked{% endif %}>
+                                <label class="form-check-label" for="model_{{ forloop.counter }}">
+                                    {{ model }}
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="row">
+
+        <!-- Левая колонка: ТОП 20 дефектов -->
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-center mb-3">Топ 20 дефектов</h5>
+                    <table class="table table-striped">
+                        <tbody>
+                            {% for defect, count in top_defects %}
+                                <tr>
+                                    <td>
+                                        <div><strong>Дефект:</strong> {{ defect|defect_name }}</div>
+                                        <div><strong>Деталь:</strong> {{ defect|defect_unit }}</div>
+                                    </td>
+                                    <td class="text-end align-middle">{{ count }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Центральная колонка: Метрики -->
+        <div class="col-md-4 mb-4">
+            <div class="d-grid gap-3">
+                <div class="card shadow-sm border-secondary text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Прошедшие кузова</h6>
+                        <p class="fs-4 text-secondary">{{ total_inspections }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-success text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Без дефектов</h6>
+                        <p class="fs-4 text-success">{{ inspections_without_defects }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-danger text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">С дефектами</h6>
+                        <p class="fs-4 text-danger">{{ inspections_with_defects }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-info text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Всего дефектов</h6>
+                        <p class="fs-4 text-info">{{ total_defects }}</p>
+                    </div>
+                </div>
+                <div class="card shadow-sm border-primary text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">DPU</h6>
+                        <p class="fs-4">{{ dpu }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Правая колонка: ТОП 20 контроллеров -->
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-center mb-3">Топ 20 контроллеров</h5>
+                    <table class="table table-striped">
+                        <tbody>
+                            {% for controller, count in top_controllers %}
+                            <tr>
+                                <td>{{ controller }}</td>
+                                <td class="text-end">{{ count }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-center">Нет данных</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const form = document.querySelector('form');
+        const startDate = document.getElementById('start_date');
+        const endDate = document.getElementById('end_date');
+
+        function autoSubmitIfBothDates() {
+            if (startDate.value && endDate.value) {
+                form.submit();
+            }
+        }
+
+        startDate.addEventListener('change', autoSubmitIfBothDates);
+        endDate.addEventListener('change', autoSubmitIfBothDates);
+    });
+</script>
+
+{% endblock %}
